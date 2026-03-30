@@ -34,7 +34,10 @@ k32 = ctypes.windll.kernel32
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_VENDOR_BOOT = SCRIPT_DIR.parent / "roms" / "_work" / "radxa_vendor_boot"
-DEFAULT_VENDOR_IMAGE = SCRIPT_DIR.parent / "roms" / "_work" / "radxa-cubie-a7z_bullseye_kde_b1.output_512.img"
+VENDOR_IMAGE_CANDIDATES = (
+    SCRIPT_DIR.parent / "roms" / "_work" / "radxa-cubie-a7z_bullseye_kde_b1.output_512.img",
+    Path(r"D:\Projects\PortaRe0\software\roms\_work\radxa-cubie-a7z_bullseye_kde_b1.output_512.img"),
+)
 DISK_PATH = r"\\.\PhysicalDrive3"
 BOOT_PROFILES = ("xorg-direct", "graphical-x11")
 
@@ -103,6 +106,38 @@ def run_wsl_bash(script: str) -> None:
         encoding="utf-8",
         errors="replace",
     )
+
+
+def run_wsl_bash_as_root(script: str, distro: str = "Ubuntu-22.04") -> None:
+    subprocess.run(
+        ["wsl", "-u", "root", "-d", distro, "--", "bash", "-lc", script],
+        check=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+
+def run_wsl_script_as_root(script: str, distro: str = "Ubuntu-22.04") -> None:
+    subprocess.run(
+        ["wsl", "-u", "root", "-d", distro, "--", "bash", "-s"],
+        input=script.encode("utf-8"),
+        check=True,
+    )
+
+
+def parse_wsl_unc_path(path: Path) -> tuple[str, str] | None:
+    path_text = str(path)
+    prefix = "\\\\wsl.localhost\\"
+    if not path_text.lower().startswith(prefix.lower()):
+        return None
+    rest = path_text[len(prefix):]
+    parts = rest.split("\\")
+    if len(parts) < 2:
+        return None
+    distro = parts[0]
+    wsl_path = "/" + "/".join(parts[1:])
+    return distro, wsl_path
 
 
 def open_handle(path: str, write: bool = False):
@@ -175,8 +210,27 @@ def normalize_existing_dir(path_text: str) -> Path:
     return path
 
 
+def resolve_vendor_image_path(path_text: str | None) -> Path:
+    if path_text:
+        path = Path(path_text)
+        if not path.exists():
+            fail(f"Vendor image not found: {path}")
+        return path
+
+    for candidate in VENDOR_IMAGE_CANDIDATES:
+        if candidate.exists():
+            return candidate
+
+    fail(
+        "Vendor image not found in default locations. "
+        "Pass --vendor-image explicitly or place the raw image under roms/_work."
+    )
+
+
 def copy_file(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
+    if src.resolve() == dst.resolve():
+        return
     if dst.exists():
         os.chmod(dst, stat.S_IWRITE)
     shutil.copy2(src, dst)
@@ -239,6 +293,45 @@ def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
 
     if not rootfs.exists() or not rootfs.is_dir():
         fail(f"Mounted rootfs directory not found: {rootfs}")
+
+    wsl_unc = parse_wsl_unc_path(rootfs)
+    if wsl_unc:
+        distro, rootfs_wsl = wsl_unc
+        build_dir_wsl = to_wsl_path(SCRIPT_DIR)
+        script = [
+            "set -e",
+            f"ROOT='{rootfs_wsl}'",
+            f"BUILD='{build_dir_wsl}'",
+            "install -d \"${ROOT}/usr/share/sddm/scripts\" \"${ROOT}/usr/bin\" \"${ROOT}/etc/systemd/system\" \"${ROOT}/etc/sddm.conf.d\"",
+            "install -m 0755 \"${BUILD}/vendor_Xsetup.sh\" \"${ROOT}/usr/share/sddm/scripts/Xsetup\"",
+        ]
+        if profile == "xorg-direct":
+            script.extend(
+                [
+                    "install -m 0755 \"${BUILD}/vendor_porta-x11-direct.sh\" \"${ROOT}/usr/bin/porta-x11-direct\"",
+                    "install -m 0755 \"${BUILD}/vendor_porta-x11-session.sh\" \"${ROOT}/usr/bin/porta-x11-session\"",
+                    "install -m 0644 \"${BUILD}/vendor_porta-x11-direct.service\" \"${ROOT}/etc/systemd/system/porta-x11-direct.service\"",
+                    "mkdir -p \"${ROOT}/etc/systemd/system/multi-user.target.wants\"",
+                    "ln -snf ../porta-x11-direct.service \"${ROOT}/etc/systemd/system/multi-user.target.wants/porta-x11-direct.service\"",
+                    "rm -f \"${ROOT}/etc/systemd/system/graphical.target.wants/porta-x11-direct.service\"",
+                    "ln -snf /dev/null \"${ROOT}/etc/systemd/system/sddm.service\"",
+                    "ln -snf /dev/null \"${ROOT}/etc/systemd/system/hdmi-toggle-once.service\"",
+                    "rm -f \"${ROOT}/etc/sddm.conf.d/10-porta-x11.conf\"",
+                ]
+            )
+        else:
+            script.extend(
+                [
+                    "install -m 0644 \"${BUILD}/vendor_sddm_x11.conf\" \"${ROOT}/etc/sddm.conf.d/10-porta-x11.conf\"",
+                    "[ \"$(readlink \"${ROOT}/etc/systemd/system/sddm.service\" 2>/dev/null || true)\" = /dev/null ] && rm -f \"${ROOT}/etc/systemd/system/sddm.service\" || true",
+                    "ln -snf /dev/null \"${ROOT}/etc/systemd/system/hdmi-toggle-once.service\"",
+                    "rm -f \"${ROOT}/etc/systemd/system/multi-user.target.wants/porta-x11-direct.service\"",
+                    "rm -f \"${ROOT}/etc/systemd/system/graphical.target.wants/porta-x11-direct.service\"",
+                ]
+            )
+        run_wsl_script_as_root("\n".join(script) + "\n", distro=distro)
+        print(f"Applied rootfs profile '{profile}' to {rootfs} via WSL")
+        return
 
     xsetup_target = rootfs / "usr" / "share" / "sddm" / "scripts" / "Xsetup"
     write_text_file(
@@ -631,6 +724,18 @@ def write_startup_script(target_root: Path) -> None:
     (target_root / "startup.nsh").write_text(script, encoding="ascii", newline="")
 
 
+def resolve_grubaa64_source(target_root: Path) -> Path:
+    candidates = (
+        Path("H:/EFI/boot/grubaa64.efi"),
+        target_root / "EFI" / "BOOT" / "grubaa64.efi",
+        target_root / "EFI" / "BOOT" / "BOOTAA64.EFI",
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    fail("grubaa64.efi source not found. Mount the Ubuntu ISO as H: or provide an existing target copy.")
+
+
 def install_vendor_boot(vendor_boot: Path, target_root: Path, profile: str) -> None:
     required = [
         vendor_boot / "vmlinuz-5.15.147-7-a733",
@@ -645,12 +750,10 @@ def install_vendor_boot(vendor_boot: Path, target_root: Path, profile: str) -> N
     grub_source = SCRIPT_DIR.parent / "roms" / "_work" / "radxa_vendor_boot" / "extlinux.conf"
     _ = grub_source  # placate lint-like readers; not used directly
 
-    ubuntu_iso = Path("H:/EFI/boot/grubaa64.efi")
-    if not ubuntu_iso.exists():
-        fail("Ubuntu ISO must be mounted as H: so grubaa64.efi can be reused")
+    grubaa64_source = resolve_grubaa64_source(target_root)
 
-    copy_file(ubuntu_iso, target_root / "EFI" / "BOOT" / "BOOTAA64.EFI")
-    copy_file(ubuntu_iso, target_root / "EFI" / "BOOT" / "grubaa64.efi")
+    copy_file(grubaa64_source, target_root / "EFI" / "BOOT" / "BOOTAA64.EFI")
+    copy_file(grubaa64_source, target_root / "EFI" / "BOOT" / "grubaa64.efi")
     copy_file(vendor_boot / "vmlinuz-5.15.147-7-a733", target_root / "vendor" / "vmlinuz-5.15.147-7-a733")
     copy_file(vendor_boot / "initrd.img-5.15.147-7-a733", target_root / "vendor" / "initrd.img-5.15.147-7-a733")
     # Keep the vendor DTB intact, but apply a tiny overlay that removes
@@ -711,7 +814,7 @@ def copy_vendor_rootfs(image_path: Path, chunk_mb: int = 16) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Install Radxa vendor Linux rootfs and boot files onto Disk 3.")
     parser.add_argument("--vendor-boot", default=str(DEFAULT_VENDOR_BOOT), help="Directory containing extracted vendor boot assets.")
-    parser.add_argument("--vendor-image", default=str(DEFAULT_VENDOR_IMAGE), help="Raw Radxa disk image used as rootfs source.")
+    parser.add_argument("--vendor-image", help="Raw Radxa disk image used as rootfs source.")
     parser.add_argument("--target", default="F:\\", help="Mounted FAT32 WINSTALL target. Default: F:\\")
     parser.add_argument(
         "--boot-profile",
@@ -731,9 +834,7 @@ def main() -> None:
     args = parse_args()
     vendor_boot = normalize_existing_dir(args.vendor_boot)
     target_root = normalize_existing_dir(args.target)
-    image_path = Path(args.vendor_image)
-    if not image_path.exists():
-        fail(f"Vendor image not found: {image_path}")
+    image_path = resolve_vendor_image_path(args.vendor_image)
 
     if not args.skip_rootfs_copy:
         copy_vendor_rootfs(image_path)
