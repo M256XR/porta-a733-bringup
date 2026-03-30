@@ -287,6 +287,62 @@ def disable_systemd_unit(rootfs: Path, unit_name: str, target_name: str) -> None
     remove_path(rootfs / "etc" / "systemd" / "system" / f"{target_name}.wants" / unit_name)
 
 
+def build_rootfs_profile_wsl_script(root_var: str, build_var: str, profile: str) -> list[str]:
+    script = [
+        "set -e",
+        f"install -d \"${{{root_var}}}/usr/share/sddm/scripts\" \"${{{root_var}}}/usr/bin\" \"${{{root_var}}}/etc/systemd/system\" \"${{{root_var}}}/etc/sddm.conf.d\"",
+        f"install -m 0755 \"${{{build_var}}}/vendor_Xsetup.sh\" \"${{{root_var}}}/usr/share/sddm/scripts/Xsetup\"",
+    ]
+    if profile == "xorg-direct":
+        script.extend(
+            [
+                f"install -m 0755 \"${{{build_var}}}/vendor_porta-x11-direct.sh\" \"${{{root_var}}}/usr/bin/porta-x11-direct\"",
+                f"install -m 0755 \"${{{build_var}}}/vendor_porta-x11-session.sh\" \"${{{root_var}}}/usr/bin/porta-x11-session\"",
+                f"install -m 0644 \"${{{build_var}}}/vendor_porta-x11-direct.service\" \"${{{root_var}}}/etc/systemd/system/porta-x11-direct.service\"",
+                f"mkdir -p \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants\"",
+                f"ln -snf ../porta-x11-direct.service \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-x11-direct.service\"",
+                f"rm -f \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-x11-direct.service\"",
+                f"ln -snf /dev/null \"${{{root_var}}}/etc/systemd/system/sddm.service\"",
+                f"ln -snf /dev/null \"${{{root_var}}}/etc/systemd/system/hdmi-toggle-once.service\"",
+                f"rm -f \"${{{root_var}}}/etc/sddm.conf.d/10-porta-x11.conf\"",
+            ]
+        )
+    else:
+        script.extend(
+            [
+                f"install -m 0644 \"${{{build_var}}}/vendor_sddm_x11.conf\" \"${{{root_var}}}/etc/sddm.conf.d/10-porta-x11.conf\"",
+                f"[ \"$(readlink \"${{{root_var}}}/etc/systemd/system/sddm.service\" 2>/dev/null || true)\" = /dev/null ] && rm -f \"${{{root_var}}}/etc/systemd/system/sddm.service\" || true",
+                f"ln -snf /dev/null \"${{{root_var}}}/etc/systemd/system/hdmi-toggle-once.service\"",
+                f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-x11-direct.service\"",
+                f"rm -f \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-x11-direct.service\"",
+            ]
+        )
+    return script
+
+
+def apply_vendor_rootfs_profile_to_image(image_path: Path, profile: str) -> None:
+    if profile not in BOOT_PROFILES:
+        fail(f"Unsupported rootfs profile: {profile}")
+
+    image_wsl = to_wsl_path(image_path)
+    build_dir_wsl = to_wsl_path(SCRIPT_DIR)
+    script = [
+        "set -e",
+        "ROOT=/mnt/porta_vendor_profile",
+        f"BUILD='{build_dir_wsl}'",
+        f"IMG='{image_wsl}'",
+        "mkdir -p \"$ROOT\"",
+        "if mountpoint -q \"$ROOT\"; then umount \"$ROOT\" || true; fi",
+        "LOOP=$(losetup --find --show -o 348127232 --sizelimit 6568837632 \"$IMG\")",
+        "trap 'sync; umount \"$ROOT\" 2>/dev/null || true; losetup -d \"$LOOP\" 2>/dev/null || true' EXIT",
+        "mount -t ext4 -o rw \"$LOOP\" \"$ROOT\"",
+    ]
+    script.extend(build_rootfs_profile_wsl_script("ROOT", "BUILD", profile))
+    script.append("sync")
+    run_wsl_script_as_root("\n".join(script) + "\n")
+    print(f"Applied rootfs profile '{profile}' to source image {image_path}")
+
+
 def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
     if profile not in BOOT_PROFILES:
         fail(f"Unsupported rootfs profile: {profile}")
@@ -298,37 +354,8 @@ def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
     if wsl_unc:
         distro, rootfs_wsl = wsl_unc
         build_dir_wsl = to_wsl_path(SCRIPT_DIR)
-        script = [
-            "set -e",
-            f"ROOT='{rootfs_wsl}'",
-            f"BUILD='{build_dir_wsl}'",
-            "install -d \"${ROOT}/usr/share/sddm/scripts\" \"${ROOT}/usr/bin\" \"${ROOT}/etc/systemd/system\" \"${ROOT}/etc/sddm.conf.d\"",
-            "install -m 0755 \"${BUILD}/vendor_Xsetup.sh\" \"${ROOT}/usr/share/sddm/scripts/Xsetup\"",
-        ]
-        if profile == "xorg-direct":
-            script.extend(
-                [
-                    "install -m 0755 \"${BUILD}/vendor_porta-x11-direct.sh\" \"${ROOT}/usr/bin/porta-x11-direct\"",
-                    "install -m 0755 \"${BUILD}/vendor_porta-x11-session.sh\" \"${ROOT}/usr/bin/porta-x11-session\"",
-                    "install -m 0644 \"${BUILD}/vendor_porta-x11-direct.service\" \"${ROOT}/etc/systemd/system/porta-x11-direct.service\"",
-                    "mkdir -p \"${ROOT}/etc/systemd/system/multi-user.target.wants\"",
-                    "ln -snf ../porta-x11-direct.service \"${ROOT}/etc/systemd/system/multi-user.target.wants/porta-x11-direct.service\"",
-                    "rm -f \"${ROOT}/etc/systemd/system/graphical.target.wants/porta-x11-direct.service\"",
-                    "ln -snf /dev/null \"${ROOT}/etc/systemd/system/sddm.service\"",
-                    "ln -snf /dev/null \"${ROOT}/etc/systemd/system/hdmi-toggle-once.service\"",
-                    "rm -f \"${ROOT}/etc/sddm.conf.d/10-porta-x11.conf\"",
-                ]
-            )
-        else:
-            script.extend(
-                [
-                    "install -m 0644 \"${BUILD}/vendor_sddm_x11.conf\" \"${ROOT}/etc/sddm.conf.d/10-porta-x11.conf\"",
-                    "[ \"$(readlink \"${ROOT}/etc/systemd/system/sddm.service\" 2>/dev/null || true)\" = /dev/null ] && rm -f \"${ROOT}/etc/systemd/system/sddm.service\" || true",
-                    "ln -snf /dev/null \"${ROOT}/etc/systemd/system/hdmi-toggle-once.service\"",
-                    "rm -f \"${ROOT}/etc/systemd/system/multi-user.target.wants/porta-x11-direct.service\"",
-                    "rm -f \"${ROOT}/etc/systemd/system/graphical.target.wants/porta-x11-direct.service\"",
-                ]
-            )
+        script = [f"ROOT='{rootfs_wsl}'", f"BUILD='{build_dir_wsl}'"]
+        script.extend(build_rootfs_profile_wsl_script("ROOT", "BUILD", profile))
         run_wsl_script_as_root("\n".join(script) + "\n", distro=distro)
         print(f"Applied rootfs profile '{profile}' to {rootfs} via WSL")
         return
@@ -826,6 +853,11 @@ def parse_args() -> argparse.Namespace:
         "--rootfs-dir",
         help="Mounted vendor rootfs directory to patch with matching userspace services.",
     )
+    parser.add_argument(
+        "--patch-source-rootfs",
+        action="store_true",
+        help="Patch the vendor image rootfs in-place before copying it onto Disk 3.",
+    )
     parser.add_argument("--skip-rootfs-copy", action="store_true", help="Only refresh EFI/FAT boot files; do not overwrite partition 3.")
     return parser.parse_args()
 
@@ -835,6 +867,9 @@ def main() -> None:
     vendor_boot = normalize_existing_dir(args.vendor_boot)
     target_root = normalize_existing_dir(args.target)
     image_path = resolve_vendor_image_path(args.vendor_image)
+
+    if args.patch_source_rootfs:
+        apply_vendor_rootfs_profile_to_image(image_path, args.boot_profile)
 
     if not args.skip_rootfs_copy:
         copy_vendor_rootfs(image_path)
