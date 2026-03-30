@@ -292,6 +292,8 @@ def build_rootfs_profile_wsl_script(root_var: str, build_var: str, profile: str)
         "set -e",
         f"install -d \"${{{root_var}}}/usr/share/sddm/scripts\" \"${{{root_var}}}/usr/bin\" \"${{{root_var}}}/etc/systemd/system\" \"${{{root_var}}}/etc/sddm.conf.d\"",
         f"install -m 0755 \"${{{build_var}}}/vendor_Xsetup.sh\" \"${{{root_var}}}/usr/share/sddm/scripts/Xsetup\"",
+        f"install -m 0755 \"${{{build_var}}}/vendor_graphical_probe.sh\" \"${{{root_var}}}/usr/bin/porta-graphical-probe\"",
+        f"install -m 0644 \"${{{build_var}}}/vendor_graphical_probe.service\" \"${{{root_var}}}/etc/systemd/system/porta-graphical-probe.service\"",
     ]
     if profile == "xorg-direct":
         script.extend(
@@ -304,6 +306,7 @@ def build_rootfs_profile_wsl_script(root_var: str, build_var: str, profile: str)
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-x11-direct.service\"",
                 f"ln -snf /dev/null \"${{{root_var}}}/etc/systemd/system/sddm.service\"",
                 f"ln -snf /dev/null \"${{{root_var}}}/etc/systemd/system/hdmi-toggle-once.service\"",
+                f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-graphical-probe.service\"",
                 f"rm -f \"${{{root_var}}}/etc/sddm.conf.d/10-porta-x11.conf\"",
             ]
         )
@@ -315,6 +318,8 @@ def build_rootfs_profile_wsl_script(root_var: str, build_var: str, profile: str)
                 f"ln -snf /dev/null \"${{{root_var}}}/etc/systemd/system/hdmi-toggle-once.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-x11-direct.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-x11-direct.service\"",
+                f"mkdir -p \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants\"",
+                f"ln -snf ../porta-graphical-probe.service \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-graphical-probe.service\"",
             ]
         )
     return script
@@ -374,12 +379,23 @@ def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
             rootfs / "etc" / "systemd" / "system" / "porta-x11-direct.service",
             (SCRIPT_DIR / "vendor_porta-x11-direct.service").read_text(encoding="utf-8"),
         )
+        copy_executable(SCRIPT_DIR / "vendor_graphical_probe.sh", rootfs / "usr" / "bin" / "porta-graphical-probe")
+        write_text_file(
+            rootfs / "etc" / "systemd" / "system" / "porta-graphical-probe.service",
+            (SCRIPT_DIR / "vendor_graphical_probe.service").read_text(encoding="utf-8"),
+        )
         enable_systemd_unit(rootfs, "porta-x11-direct.service", "multi-user.target")
         disable_systemd_unit(rootfs, "porta-x11-direct.service", "graphical.target")
+        disable_systemd_unit(rootfs, "porta-graphical-probe.service", "multi-user.target")
         mask_systemd_unit(rootfs, "sddm.service")
         mask_systemd_unit(rootfs, "hdmi-toggle-once.service")
         remove_path(rootfs / "etc" / "sddm.conf.d" / "10-porta-x11.conf")
     else:
+        copy_executable(SCRIPT_DIR / "vendor_graphical_probe.sh", rootfs / "usr" / "bin" / "porta-graphical-probe")
+        write_text_file(
+            rootfs / "etc" / "systemd" / "system" / "porta-graphical-probe.service",
+            (SCRIPT_DIR / "vendor_graphical_probe.service").read_text(encoding="utf-8"),
+        )
         write_text_file(
             rootfs / "etc" / "sddm.conf.d" / "10-porta-x11.conf",
             (SCRIPT_DIR / "vendor_sddm_x11.conf").read_text(encoding="utf-8"),
@@ -388,6 +404,7 @@ def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
         mask_systemd_unit(rootfs, "hdmi-toggle-once.service")
         disable_systemd_unit(rootfs, "porta-x11-direct.service", "multi-user.target")
         disable_systemd_unit(rootfs, "porta-x11-direct.service", "graphical.target")
+        enable_systemd_unit(rootfs, "porta-graphical-probe.service", "multi-user.target")
 
     print(f"Applied rootfs profile '{profile}' to {rootfs}")
 

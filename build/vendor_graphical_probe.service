@@ -1,0 +1,12 @@
+[Unit]
+Description=One-shot probe for SDDM/Xorg state on serial
+After=graphical.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/porta-graphical-probe
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
