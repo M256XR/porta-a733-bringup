@@ -307,6 +307,10 @@ def build_rootfs_profile_wsl_script(root_var: str, build_var: str, profile: str)
                 f"ln -snf /dev/null \"${{{root_var}}}/etc/systemd/system/sddm.service\"",
                 f"ln -snf /dev/null \"${{{root_var}}}/etc/systemd/system/hdmi-toggle-once.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-graphical-probe.service\"",
+                f"rm -f \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-graphical-probe.service\"",
+                f"rm -f \"${{{root_var}}}/etc/systemd/system/porta-sddm-probe.service\"",
+                f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-sddm-probe.service\"",
+                f"rm -f \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-sddm-probe.service\"",
                 f"rm -f \"${{{root_var}}}/etc/sddm.conf.d/10-porta-x11.conf\"",
             ]
         )
@@ -318,8 +322,11 @@ def build_rootfs_profile_wsl_script(root_var: str, build_var: str, profile: str)
                 f"ln -snf /dev/null \"${{{root_var}}}/etc/systemd/system/hdmi-toggle-once.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-x11-direct.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-x11-direct.service\"",
-                f"mkdir -p \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants\"",
-                f"ln -snf ../porta-graphical-probe.service \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-graphical-probe.service\"",
+                f"rm -f \"${{{root_var}}}/etc/systemd/system/porta-sddm-probe.service\"",
+                f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-sddm-probe.service\"",
+                f"rm -f \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-sddm-probe.service\"",
+                f"mkdir -p \"${{{root_var}}}/etc/systemd/system/graphical.target.wants\"",
+                f"ln -snf ../porta-graphical-probe.service \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-graphical-probe.service\"",
             ]
         )
     return script
@@ -387,6 +394,10 @@ def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
         enable_systemd_unit(rootfs, "porta-x11-direct.service", "multi-user.target")
         disable_systemd_unit(rootfs, "porta-x11-direct.service", "graphical.target")
         disable_systemd_unit(rootfs, "porta-graphical-probe.service", "multi-user.target")
+        disable_systemd_unit(rootfs, "porta-graphical-probe.service", "graphical.target")
+        remove_path(rootfs / "etc" / "systemd" / "system" / "porta-sddm-probe.service")
+        disable_systemd_unit(rootfs, "porta-sddm-probe.service", "multi-user.target")
+        disable_systemd_unit(rootfs, "porta-sddm-probe.service", "graphical.target")
         mask_systemd_unit(rootfs, "sddm.service")
         mask_systemd_unit(rootfs, "hdmi-toggle-once.service")
         remove_path(rootfs / "etc" / "sddm.conf.d" / "10-porta-x11.conf")
@@ -404,7 +415,11 @@ def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
         mask_systemd_unit(rootfs, "hdmi-toggle-once.service")
         disable_systemd_unit(rootfs, "porta-x11-direct.service", "multi-user.target")
         disable_systemd_unit(rootfs, "porta-x11-direct.service", "graphical.target")
-        enable_systemd_unit(rootfs, "porta-graphical-probe.service", "multi-user.target")
+        remove_path(rootfs / "etc" / "systemd" / "system" / "porta-sddm-probe.service")
+        disable_systemd_unit(rootfs, "porta-sddm-probe.service", "multi-user.target")
+        disable_systemd_unit(rootfs, "porta-sddm-probe.service", "graphical.target")
+        disable_systemd_unit(rootfs, "porta-graphical-probe.service", "multi-user.target")
+        enable_systemd_unit(rootfs, "porta-graphical-probe.service", "graphical.target")
 
     print(f"Applied rootfs profile '{profile}' to {rootfs}")
 
