@@ -1,0 +1,13 @@
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/gpu/drm/lima/lima.ko.xz
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/gpu/drm/panel/panel-sitronix-st7701.ko.xz
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/gpu/drm/panel/panel-sitronix-st7789v.ko.xz
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/gpu/drm/scheduler/gpu-sched.ko.xz
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/net/phy/ax88796b.ko.xz
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/net/phy/fixed_phy.ko.xz
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/net/phy/libphy.ko.xz
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/net/phy/maxio.ko.xz
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/net/phy/mdio_devres.ko.xz
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/net/phy/mscc/mscc.ko.xz
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/net/phy/phylink.ko.xz
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/net/phy/realtek.ko.xz
+/tmp/tmp.y2xLRmorHe/p3/lib/modules/5.15.147-7-a733/kernel/drivers/net/phy/smsc.ko.xz

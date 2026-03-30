@@ -1,0 +1,24 @@
+  # boot0ダンプ (eMMCの先頭から1MB、安全マージン込み)
+  sudo dd if=/dev/mmcblk0 bs=1K count=1024 of=/media/$(ls /media/$(whoami)/ | head -1)/boot0dump.bin
+
+  # U-Bootがどのセクタにあるか確認
+  sudo partx -s /dev/mmcblk0
+  
+  
+  radxa@radxa-cubie-a7z:/$ sudo dd if=/dev/mmcblk0 bs=1K count=1024 of=/media/$(ls /media/$(whoami)/ | head -1)/boot0dump.bin
+dd: failed to open '/media/CCCOMA_X64F/boot0dump.bin': No such file or directory
+radxa@radxa-cubie-a7z:/$
+
+
+radxa@radxa-cubie-a7z:/$ sudo partx -s /dev/mmcblk0
+NR START     END SECTORS  SIZE NAME UUID
+ 1 32768   65535   32768   16M prim 5184ed98-cfa8-4e51-823e-ae4c8de6bcd6
+ 2 65536  679935  614400  300M prim 83105d22-5b1c-470e-8c23-c9999935158a
+ 3 679936 249999326 249319391 118.9G prim 02bc9a66-ad0d-4118-baee-728c0c2d4044
+radxa@radxa-cubie-a7z:/$
+
+radxa@radxa-cubie-a7z:/$ sudo fdisk -l /dev/
+fdisk: cannot open /dev/: Is a directory
+radxa@radxa-cubie-a7z:/$ 
+
+

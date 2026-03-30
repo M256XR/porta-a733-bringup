@@ -1,0 +1,10 @@
+radxa@radxa-cubie-a7z:~$ sudo hexdump -C /dev/mmcblk0 | grep -a "U-Boot" | head -5
+^C
+radxa@radxa-cubie-a7z:~$ sudo dd if=/dev/mmcblk0 bs=512 skip=64 count=2000 2>/dev/null | strings | grep -i "u-boot\|2018\|2024" | head -10
+2024-03-20 10:36
+u-boot
+u-boot-gz
+u-boot-lz4
+u-boot-lzma
+Jump to U-Boot: uboot_base = 0x%x
+radxa@radxa-cubie-a7z:~$ 

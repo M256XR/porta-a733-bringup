@@ -1,0 +1,13 @@
+build/__pycache__/
+*.pyc
+*.tmp
+*.bak
+log/*.log
+roms/**/*.img
+roms/**/*.iso
+roms/**/*.xz
+roms/_work/mntinspect/
+roms/_work/radxa_debian_extract/
+roms/_work/radxa_vendor/
+roms/_work/tmp_vendor_test/
+

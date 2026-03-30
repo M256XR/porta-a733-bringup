@@ -1,0 +1,72 @@
+radxa@radxa-cubie-a7z:~/Documents$  sudo apt install read-edid 2>/dev/null || true                                                                                                                                            
+  cat /sys/class/drm/card0-HDMI-A-1/edid | edid-decode 2>/dev/null
+[sudo] password for radxa: 
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+Package read-edid is not available, but is referred to by another package.
+This may mean that the package is missing, has been obsoleted, or
+is only available from another source
+
+radxa@radxa-cubie-a7z:~/Documents$ xrandr --verbose 2>/dev/null | head -60
+Screen 0: minimum 320 x 200, current 1440 x 2560, maximum 8192 x 8192
+HDMI-1 connected primary 1440x2560+0+0 (0x43) normal (normal left inverted right x axis y axis) 90mm x 160mm
+        Identifier: 0x40
+        Timestamp:  338274
+        Subpixel:   unknown
+        Gamma:      1.0:1.0:1.0
+        Brightness: 1.0
+        Clones:    
+        CRTC:       0
+        CRTCs:      0 1
+        Transform:  1.000000 0.000000 0.000000
+                    0.000000 1.000000 0.000000
+                    0.000000 0.000000 1.000000
+                   filter: 
+        EDID: 
+                00ffffffffffff003354010000000000
+                0c1b0103800000780a07f59a564e8626
+                1e505400000000000000000000000000
+                000000000000ff4fa096500010a04623
+                c2005aa000000018000000fc004c5330
+                36305231535830312020000000ff0030
+                303030303030302020202020000000fd
+                00174b0ff01e000a2020202020200182
+                02031774470000000000000023097f07
+                66030c00300080ff4fa096500010a046
+                23c2005aa000000018ff4fa096500010
+                a04623c2005aa000000018ff4fa09650
+                0010a04623c2005aa000000018ff4fa0
+                96500010a04623c2005aa000000018ff
+                4fa096500010a04623c2005aa0000000
+                1800000000000000000000000000008d
+        dynamicrange: 1 
+                range: (0, 31)
+        dynamicrange_support: SDR 
+                supported: SDR, HDR10, HDR10P, HLG
+        pixelformat: 1 
+                range: (0, 255)
+        pixelformat_support: YUV420_10BITS 
+                supported: RGB888_8BITS, YUV444_8BITS, YUV422_8BITS, YUV420_8BITS, RGB888_10BITS, YUV444_10BITS, YUV422_10BITS, YUV420_10BITS, RGB888_12BITS, YUV444_12BITS, YUV422_12BITS, YUV420_12BITS, RGB888_16BITS, YUV444_16BITS, YUV422_16BITS, YUV420_16BITS
+        link-status: Good 
+                supported: Good, Bad
+        CONNECTOR_ID: 147 
+                supported: 147
+        non-desktop: 0 
+                range: (0, 1)
+  1440x2560 (0x43) 204.790MHz -HSync -VSync *current +preferred
+        h: width  1440 start 1510 end 1545 total 1590 skew    0 clock 128.80KHz
+        v: height 2560 start 2572 end 2574 total 2576           clock  50.00Hz
+DP-1 disconnected (normal left inverted right x axis y axis)
+        Identifier: 0x41
+        Timestamp:  338274
+        Subpixel:   unknown
+        Clones:    
+        CRTCs:      0 1
+        Transform:  1.000000 0.000000 0.000000
+                    0.000000 1.000000 0.000000
+                    0.000000 0.000000 1.000000
+                   filter: 
+        link-status: Good 
+                supported: Good, Bad
+radxa@radxa-cubie-a7z:~/Documents$ 

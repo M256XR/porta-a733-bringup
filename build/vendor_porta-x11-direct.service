@@ -1,0 +1,12 @@
+[Unit]
+Description=Porta direct Xorg HDMI test
+After=multi-user.target systemd-user-sessions.service
+Wants=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/porta-x11-direct
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

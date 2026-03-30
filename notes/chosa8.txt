@@ -1,0 +1,4 @@
+radxa@radxa-cubie-a7z:/media/radxa/CCCOMA_X64F$ xrandr --output HDMI-1 --set pixelformat RGB888_8BITS
+xrandr: failed to parse 'RGB888_8BITS' as a number
+Try 'xrandr --help' for more information.
+radxa@radxa-cubie-a7z:/media/radxa/CCCOMA_X64F$ 

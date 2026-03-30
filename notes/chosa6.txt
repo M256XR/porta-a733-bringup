@@ -1,0 +1,32 @@
+radxa@radxa-cubie-a7z:/media/radxa/CCCOMA_X64F$ sudo dmesg | grep -i "hdmi\|tcon\|drm" | tail -30
+[    8.356848] [drm] sunxi-hdmi: hdmi drv audio set enable done
+[    8.357063] [drm] sunxi-hdmi: hdmi drv audio set disable done
+[    8.375817] [drm] sunxi-hdmi: hdmi drv audio set info done
+[    8.375849] [drm] sunxi-hdmi: dw audio get n = 6272
+[    8.380922] [drm] sunxi-hdmi: hdmi drv audio set enable done
+[   13.456495] [drm] sunxi-hdmi: hdmi drv audio set disable done
+[  333.902676] [drm] sunxi-hdmi: hdmi drv audio set info done
+[  333.902696] [drm] sunxi-hdmi: dw audio get n = 6272
+[  333.907744] [drm] sunxi-hdmi: hdmi drv audio set enable done
+[  333.907886] [drm] sunxi-hdmi: hdmi drv audio set disable done
+[  333.921033] [drm] sunxi-hdmi: hdmi drv audio set info done
+[  333.921051] [drm] sunxi-hdmi: dw audio get n = 6272
+[  333.926102] [drm] sunxi-hdmi: hdmi drv audio set enable done
+[  336.375954] [drm] sunxi-hdmi: drm hdmi detect: connect
+[  336.376237] [drm] sunxi-hdmi: drm get edid support modes: 6
+[  338.000191] [drm] sunxi-hdmi: drm hdmi check mode: unchange >>>>>>>>>>>>>>>>
+[  338.005190] [drm] sunxi-hdmi: drm hdmi check mode: unchange >>>>>>>>>>>>>>>>
+[  338.037743] [drm] sunxi-hdmi: drm hdmi check mode: unchange >>>>>>>>>>>>>>>>
+[  338.040183] [drm] sunxi-hdmi: drm hdmi check mode: unchange >>>>>>>>>>>>>>>>
+[  338.045188] [drm] sunxi-hdmi: drm hdmi check mode: unchange >>>>>>>>>>>>>>>>
+[  338.050254] [drm] sunxi-hdmi: drm hdmi check mode: unchange >>>>>>>>>>>>>>>>
+[  338.055194] [drm] sunxi-hdmi: drm hdmi check mode: unchange >>>>>>>>>>>>>>>>
+[  338.060188] [drm] sunxi-hdmi: drm hdmi check mode: unchange >>>>>>>>>>>>>>>>
+[  338.124699] [drm] sunxi-hdmi: drm hdmi detect: connect
+[  338.124939] [drm] sunxi-hdmi: drm get edid support modes: 6
+[  338.955499] [drm] sunxi-hdmi: hdmi drv audio set disable done
+[ 1858.041226] [drm] sunxi-hdmi: drm hdmi detect: connect
+[ 1858.041542] [drm] sunxi-hdmi: drm get edid support modes: 6
+[ 1858.083562] [drm] sunxi-hdmi: drm hdmi detect: connect
+[ 1858.083806] [drm] sunxi-hdmi: drm get edid support modes: 6
+radxa@radxa-cubie-a7z:/media/radxa/CCCOMA_X64F$ 

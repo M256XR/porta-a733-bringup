@@ -1,0 +1,16 @@
+  # ダンプ（パーティション1の手前まで全部、16MB）
+  sudo dd if=/dev/mmcblk0 bs=1M count=16 of=/media/CCCOMA_X64F/boot0dump.bin
+
+  # 確認
+  ls -lh /media/CCCOMA_X64F/boot0dump.bin
+  
+  
+  radxa@radxa-cubie-a7z:/media/radxa/CCCOMA_X64F$ sudo dd if=/dev/mmcblk0 bs=1M count=16 of=/media/CCCOMA_X64F/boot0dump.bin
+dd: failed to open '/media/CCCOMA_X64F/boot0dump.bin': No such file or directory
+radxa@radxa-cubie-a7z:/media/radxa/CCCOMA_X64F$ cd /
+radxa@radxa-cubie-a7z:/$ 
+radxa@radxa-cubie-a7z:/$ 
+radxa@radxa-cubie-a7z:/$ cd /
+radxa@radxa-cubie-a7z:/$ sudo dd if=/dev/mmcblk0 bs=1M count=16 of=/media/CCCOMA_X64F/boot0dump.bin
+dd: failed to open '/media/CCCOMA_X64F/boot0dump.bin': No such file or directory
+radxa@radxa-cubie-a7z:/$ 

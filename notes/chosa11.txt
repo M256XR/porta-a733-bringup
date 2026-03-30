@@ -1,0 +1,18 @@
+  # マウントポイント確認
+  ls /media/radxa/
+
+  # ダンプ
+  sudo dd if=/dev/mmcblk0 bs=1M count=16 of=/media/radxa/TEST/boot0dump.bin
+
+  # 確認
+  ls -lh /media/radxa/TEST/boot0dump.bin
+  
+  radxa@radxa-cubie-a7z:/media/radxa/TEST$ ls /media/radxa/
+TEST
+radxa@radxa-cubie-a7z:/media/radxa/TEST$ sudo dd if=/dev/mmcblk0 bs=1M count=16 of=/media/radxa/TEST/boot0dump.bin
+16+0 records in
+16+0 records out
+16777216 bytes (17 MB, 16 MiB) copied, 1.72797 s, 9.7 MB/s
+radxa@radxa-cubie-a7z:/media/radxa/TEST$ ls -lh /media/radxa/TEST/boot0dump.bin
+-rw-r--r-- 1 radxa radxa 16M Jun 26 01:00 /media/radxa/TEST/boot0dump.bin
+radxa@radxa-cubie-a7z:/media/radxa/TEST$ 

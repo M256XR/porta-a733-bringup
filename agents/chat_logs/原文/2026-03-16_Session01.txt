@@ -1,0 +1,1486 @@
+# PortaRe0 Software Session01  2026-03-16
+# Source: d3cf4311-40b4-4056-bac5-36e2447a8a40.jsonl
+============================================================
+
+[User]
+D:\Projects\PortaRe0\software\Claude\CLAUDE.md
+
+----------------------------------------
+
+[Claude]
+ソフトウェア開発用の CLAUDE.md を確認しました。`software/` ディレクトリのコンテキストですね。
+
+何から始めますか？PROGRESS.md を確認して現状を把握しましょうか？
+
+----------------------------------------
+
+[Claude]
+現状把握できました。
+
+- **ソフト開発は未着手**（PCBレイアウト・試作待ち）
+- **次のタスク**: RP2040 ファームウェアフレームワーク選定
+
+今日は何をやりますか？フレームワーク選定（QMK / KMK / Pico SDK）の検討から始めますか？
+
+----------------------------------------
+
+[User]
+キーボードのフレームワーク何使うべきかとオーディオを何で開発するか
+
+----------------------------------------
+
+[Claude]
+ハードウェア構成を踏まえて整理します。specs を確認してから回答します。
+
+----------------------------------------
+
+[Claude]
+---
+
+## キーボード: **QMK 一択**
+
+**理由:**
+
+| 要件 | QMK | KMK | Pico SDK |
+|------|-----|-----|----------|
+| 63キー カスタムマトリクス | ✅ 完全対応 | ✅ | ✅ |
+| アナログスティック (GP27/28 ADC) | ✅ `analog_joystick` / `pointing_device` | △ 自前実装 | ✅ |
+| I2C BQ25895 読み込み (LED制御) | ✅ カスタムタスク | △ | ✅ |
+| ファン PWM (GP26) | ✅ カスタムタスク | △ | ✅ |
+| 電源ボタン検出 (GP25) | ✅ | △ | ✅ |
+| ドキュメント・エコシステム | ◎ | ○ | △ |
+
+KMKはPythonで書きやすいが、アナログスティックのポインティングデバイス統合とBQ25895 I2C制御の組み合わせで詰まりやすい。Pico SDKは工数が2〜3倍。
+
+---
+
+## オーディオ: **Pico SDK + TinyUSB (UAC2)**
+
+信号フローを見ると RP2040 #2 は「USB Audio デバイス」として動く設計になっている（Cubie A7Z → VL812 DP4 → RP2040 #2）。
+
+**TinyUSBのUAC2（USB Audio Class 2.0）が唯一の現実的な選択肢:**
+
+```
+TinyUSB UAC2
+  → PCM受信
+  → PIO I2S Master出力
+      ├─ MAX98357A × 2 (スピーカー L/R)
+      └─ PCM5102A → TPA6132A2 (イヤホン)
+  → GP6 割り込みでスピーカー/イヤホン自動切り替え
+      (GP3: SD_MODE / GP4: XSMT / GP5: HP_EN)
+```
+
+**Linux側はドライバ不要**: UAC2準拠デバイスとしてCubie A7Zに自動認識され、PipeWire/ALSAで普通に扱える。
+
+**懸念点:** TinyUSB UAC2サンプルはあるが、サンプルレート・ビット深度の設定とPIOのI2S同期（クロックドリフト対策）は多少手間がかかる。
+
+---
+
+## 整理すると
+
+| MCU | フレームワーク | 主なタスク |
+|-----|--------------|-----------|
+| RP2040 #1 | **QMK** | キーマトリクス・スティック・BQ25895 LED・ファン・電源ボタン |
+| RP2040 #2 | **Pico SDK + TinyUSB** | USB Audio受信 → I2S出力 → イヤホン/スピーカー切り替え |
+
+開発の順序としては RP2040 #1 (QMK) から始めるのが動作確認しやすくて無難です。
+
+----------------------------------------
+
+[User]
+おｋなんか計画みたいな感じでまとめて置ける？
+
+----------------------------------------
+
+[Claude]
+PROGRESS.md の「未解決TBD」と「決定事項ログ」を更新して、specs に開発計画ファイルを作ります。
+
+----------------------------------------
+
+[Claude]
+次に PROGRESS.md の TBD と決定事項を更新します。
+
+----------------------------------------
+
+[Claude]
+完了です。
+
+- `software/Claude/specs/dev_plan.md` — フレームワーク選定・GPIO対応・切り替えロジック・開発順序をまとめた計画書
+- `software/Claude/PROGRESS.md` — TBD解消 & 決定事項ログ追記
+
+次回セッションから `dev_plan.md` を読めば即コンテキスト復元できます。
+
+----------------------------------------
+
+[User]
+あとこれはSBCの話なんだけど
+arm系の任意のディストリビューションを実行できるようにしたいんよね
+
+----------------------------------------
+
+[Claude]
+Cubie A7Z のSoC情報を確認します。
+
+----------------------------------------
+
+[Claude]
+SoC: **Allwinner A733** ですね。
+
+---
+
+## 前提: ARM SBCで任意ディストリを動かす構造
+
+SoC固有部分とディストリ部分を分離するのがポイントです。
+
+```
+固定（SoC依存）           差し替え可能
+┌──────────────┐         ┌──────────────────┐
+│ U-Boot (SPL) │         │ rootfs           │
+│ Kernel       │  ────→  │ （Debian/Ubuntu/ │
+│ DTB          │         │  Arch/Alpine等） │
+└──────────────┘         └──────────────────┘
+```
+
+---
+
+## 推奨アプローチ: **Armbian ベース**
+
+Allwinner SBC は Armbian のサポートが最も充実しています。
+
+**構成:**
+```
+SDカード/eMMC
+  /boot (FAT32)  → u-boot, Image, .dtb, boot.scr
+  /     (ext4)   → rootfs（Armbian提供 or カスタム）
+```
+
+Armbian は kernel + U-Boot をビルド済みで提供しつつ、rootfs は Debian/Ubuntu どちらも選べる。Cubie A7Z（A733）が Armbian のサポートリストにあるかが最初の確認ポイント。
+
+---
+
+## 「任意のディストリ」を実現する方法（2択）
+
+### A. rootfs差し替え方式（クリーン）
+kernel/DTB はベンダー or Armbian 提供を使い、rootfsだけ入れ替える。
+
+```bash
+# Debianの場合
+debootstrap --arch=arm64 bookworm /mnt/rootfs
+
+# Arch ARM の場合
+tar -xf ArchLinuxARM-aarch64-latest.tar.gz -C /mnt/rootfs
+
+# Alpine の場合
+tar -xf alpine-minirootfs-*-aarch64.tar.gz -C /mnt/rootfs
+```
+
+→ どのディストリでも `/boot` は共通、`/` だけ変えればOK
+
+### B. DistroBox方式（ホストOSは固定、中身だけ任意）
+ホストを軽量Debian/Ubuntuにして、DistroBoxでコンテナ的に任意ディストリを動かす。
+
+```bash
+distrobox create --name arch --image archlinux
+distrobox create --name fedora --image fedora:latest
+distrobox enter arch
+```
+
+→ GUIアプリもホストのWaylandに統合されるのでCyberdeck用途に向いている。
+
+---
+
+## 実際の進め方
+
+1. **Cubie A7Z の Armbian サポート確認** — [armbian.com/download](https://www.armbian.com/download/) で検索
+   - あれば: Armbian image そのまま使用
+   - なければ: ベンダー提供SDKからカーネルビルド
+
+2. **ブートパーティション固定、rootfs差し替え構成を確立**
+
+3. **任意ディストリのrootfsを `debootstrap` / tar展開で入れる**
+
+---
+
+## この用途での推奨
+
+| 目的 | 推奨 |
+|------|------|
+| メインOS | Debian arm64（軽量・安定） |
+| 任意ディストリ体験 | DistroBox（コンテナで共存） |
+| フルOS入れ替え | rootfs差し替え方式 |
+
+**まず Armbian の A733 サポート有無を確認するのが最初のステップ**です。なければベンダーSDKからのビルドになるので、そっちの手順も展開できます。
+
+----------------------------------------
+
+[User]
+Armbianとは
+あとマジでただのロマンなんだけどどんだけ時間かかってもいいからwindows arm動かしたい
+
+----------------------------------------
+
+[Claude]
+## Armbian とは
+
+一言で言うと「ARM SBC向けに、U-Boot・カーネル・DTBをSBCごとに調整済みで提供してくれるLinuxディストリ」です。
+
+普通のUbuntu/Debianをそのままインストールしてもハードウェアを認識しない（ドライバ・DTB不足）のがARM SBCの辛いところ。ArmbianはそこをSBCごとに対応済みにしてくれています。Raspberry Pi でいう「Raspberry Pi OS」の立ち位置を、汎用ARM SBC向けにやっているイメージ。
+
+---
+
+## Windows ARM on Allwinner A733
+
+ロマン理解しますが、正直に言うと**現時点でほぼ不可能**です。理由を整理すると：
+
+### 根本的な壁: UEFI がない
+
+Windows ARM は UEFI ブートを必須要件にしています。Allwinner は U-Boot ベースで UEFI 非対応。
+
+| SBC | UEFI | Windows ARM |
+|-----|------|-------------|
+| Raspberry Pi 4/5 | EDK2移植済み ✅ | WoAプロジェクトで動作実績あり |
+| Snapdragon X系 | 公式対応 ✅ | Microsoft公式サポート |
+| Allwinner A733 | EDK2ほぼ未対応 ❌ | 前例なし |
+
+RPi でWindows ARMが動くのは有志が EDK2（UEFIファームウェア）を移植したから。Allwinner 向けはほぼ誰もやっていない。
+
+### もう一つの壁: ドライバ
+
+Windows は Allwinner SoC のドライバを一切持っていない（GPU/Mali、eMMC、USB全滅）。
+
+---
+
+## 現実的にやるなら
+
+### A. QEMU（今すぐできる）
+Linux 上で Windows ARM を仮想化する。遅いが確実に動く。
+
+```bash
+qemu-system-aarch64 -M virt -cpu cortex-a57 \
+  -drive file=windows_arm.img -bios QEMU_EFI.fd
+```
+
+### B. Allwinner向けEDK2を自力移植（真のロマン路線）
+前例がないので完全に自力開拓。  
+- Allwinner A133（A733に近い）のU-Bootソースを読む
+- EDK2の既存ARM移植（RPi, Ampere等）を参考にAllwinner向けに書く
+- UEFI が通ったら WoA Installer（worproject.com）でWindows ARM を流す
+
+これは数ヶ月〜数年かかるレベルのプロジェクトです。
+
+---
+
+## 結論
+
+| アプローチ | 難易度 | ロマン度 |
+|-----------|--------|---------|
+| QEMU上で動かす | 低 | 低 |
+| Allwinner EDK2移植 → WoA | 超高（前例なし） | 最高 |
+| SBCをSnapdragon機に変える | 低〜中 | 中 |
+
+**本気でやるならEDK2移植から**ですが、それ単体でかなり大きなプロジェクトになります。興味あれば手順を一緒に調べることはできます。
+
+----------------------------------------
+
+[User]
+まぁRPiでできるということはこいつでもできるっちゅうことよ
+
+----------------------------------------
+
+[Claude]
+その理論は正しいです。RPiのEDK2も最初は「誰かが移植した」だけなので、技術的に Allwinner でできない理由はない。
+
+ただ RPi との差を正直に言っておくと：
+
+**UEFI（EDK2）移植** → やれば絶対できる。これはRPiと同じ道筋。
+
+**ドライバ問題** → RPiですら Windows上でGPUはまともに動かない。Allwinner はさらに何も動かない状態から始まる。「起動する」と「実用的に動く」は別の話。
+
+---
+
+## ロードマップ（時間無制限前提）
+
+```
+Step 1: ARM Trusted Firmware (TF-A) の Allwinner A733 対応確認
+        → BL31 (EL3ファームウェア) が必要
+        → Allwinner は mainline TF-A にある程度サポートあり ✅
+
+Step 2: EDK2 を Allwinner A733 向けに移植
+        → 既存の Allwinner EDK2 取り組みを探す（少数あり）
+        → RPi4 EDK2 を参考にペリフェラル初期化を書く
+        → UEFI Shell が起動すれば第一関門突破
+
+Step 3: Windows ARM インストール
+        → WoA Installer or DISM で展開
+        → この時点では「起動する」だけが目標
+
+Step 4: ドライバを1個ずつ解決
+        → USB / eMMC が動けば最低限使える
+        → GPU は長期戦
+```
+
+---
+
+## まず調べること
+
+- Allwinner A733 の TF-A サポート状況（[TF-A公式リポジトリ](https://git.trustedfirmware.org/TF-A/trusted-firmware-a.git/)）
+- 先人が Allwinner 向け EDK2 をどこまでやっているか
+
+これ調べてみましょうか？
+
+----------------------------------------
+
+[User]
+調べてみて
+
+----------------------------------------
+
+[Claude]
+思ったより新しくて未開拓なSoCでした。
+
+---
+
+## 調査結果
+
+### Allwinner A733 の素性
+
+まず A733 自体が **2024年製の新SoC** で想像より高スペックでした:
+
+- **CPU**: Cortex-**A76** × 2 + Cortex-**A55** × 6（big.LITTLE、最大2.0GHz）
+- **GPU**: Imagination BXM-4-64
+- **NPU**: 3 TOPS
+- プロセス: 12nm
+
+---
+
+### Windows ARM に向けた現状
+
+| ステップ | 状況 |
+|---------|------|
+| TF-A（BL31）A733対応 | **なし**（2024年新製品のため未着手） |
+| EDK2/UEFI Allwinner | **実質なし**（2016〜17年のA64向け残骸のみ、W10 IoT Coreのみ対応） |
+| WoA プロジェクト対応 | **なし** |
+| Linux mainline DTSマージ | **未マージ**（今後） |
+
+RPi との決定的な違いは「A733 は2024年製で誰もまだ手をつけていない」という点です。RPi はコミュニティが何年もかけて積み上げた結果。
+
+---
+
+## 開拓ロードマップ（前人未到ルート）
+
+```
+Phase 1: Linux を動かす（前提）
+  → linux-sunxi コミュニティと連携してDTS書く
+  → U-Boot を A733 向けにポート
+
+Phase 2: TF-A BL31 を A733 に移植
+  → H616/A100 の実装を参考にする
+  → EL3セキュアモニタが動けばOK
+
+Phase 3: EDK2 を Allwinner A733 向けに移植
+  → 2017年の A64 向け実装 + RPi4 EDK2 を参考
+  → UEFI Shell 起動が最初の目標
+
+Phase 4: WoA でWindows ARM 展開
+  → USB / eMMC ドライバが通れば起動する
+  → GPU（Imagination BXM）はWindowsドライバ要確認
+```
+
+**実は RPi より難しいのは Phase 3 以降じゃなくて Phase 1〜2**（Linuxすら mainline で動かない段階）のところです。
+
+Linux mainline に A733 DTS をマージするところから始まる、真の開拓プロジェクトです。やるなら linux-sunxi コミュニティへの参加が必須になります。
+
+----------------------------------------
+
+[User]
+コミュニティに参加するレベルの話なんか
+
+----------------------------------------
+
+[Claude]
+必須ではないです。「コミュニティに貢献してmainlineにマージ」は「成果を世の中に残したい」場合の話で、自分のデバイスで動かすだけなら別ルートがあります。
+
+---
+
+## 2つのルート
+
+### A. ベンダーBSPルート（コミュニティ不要）
+
+Cubie / Allwinner はSDKを配布しているはずなので、それを使う。
+
+```
+Allwinner SDK（vendor U-Boot + vendor kernel + DTB）
+  ↓ これをベースに
+TF-A BL31 を自分でポート（H616実装を参考）
+  ↓
+EDK2 を自分でポート
+  ↓
+Windows ARM
+```
+
+**メリット**: 誰の許可も不要、自分のペースで進める  
+**デメリット**: 詰まっても聞ける人がいない、BSPカーネルは汚い
+
+### B. linux-sunxi 経由ルート（コミュニティあり）
+
+linux-sunxi.org は Allwinner 専門のコミュニティで、A733 のページも既に存在していた。ここで「A733 動かしたい」と言えば情報が集まりやすい。
+
+**メリット**: 先人の知恵が借りられる、DTSや初期化コードを共有してもらえる可能性  
+**デメリット**: mainline マージを目指す文化なのでコード品質を求められる
+
+---
+
+## 現実的な難易度
+
+コミュニティ参加うんぬん以前に、作業内容自体がかなりハードです：
+
+| 作業 | 難易度 | 必要知識 |
+|------|--------|---------|
+| vendor BSP で Linux 起動 | 中 | Uブート・DTB基礎 |
+| TF-A A733 移植 | 高 | ARMv8 EL3・セキュアブート |
+| EDK2 移植 | 非常に高 | UEFIアーキテクチャ・C |
+| Windows ARM 起動 | 中（EDK2が通れば） | WoA手順 |
+| Windows でデバイス動かす | 超高 | Windowsドライバ開発 |
+
+「Windowsが起動する」までなら気合でいけますが、「Windowsでまともに使える」は GPU ドライバ（Imagination BXM）の Windows 対応待ちになる可能性があります。
+
+---
+
+**結論**: コミュニティ参加はオプション。ただ A733 は 2024 年製で情報がほぼゼロなので、ベンダー SDK を掘り起こすところからのスタートになります。本気でやるなら Cubie の公式フォーラム・GitHub から SDK を探すのが最初の一手です。
+
+----------------------------------------
+
+[User]
+まぁ別に成果を残したいわけじゃないからなぁこんなマニアックなことを残して何になるんだって話でもあるし
+
+----------------------------------------
+
+[Claude]
+完全に同意です。「自分のデバイスで動いた」がゴールなら BSP ルートで全然いい。
+
+実際の最初の一手は：
+
+1. **Cubie の公式サイト / GitHub から A7Z の SDK を探す**
+2. **vendor U-Boot + kernel で Linux を起動させる**
+
+Linux が動くことが確認できてから TF-A → EDK2 のステップに進む流れです。まず SDK があるかどうかが出発点になるので、それを確認してみますか？
+
+----------------------------------------
+
+[User]
+オナシャス
+
+----------------------------------------
+
+[Claude]
+思ったよりずっと整備されてました。
+
+---
+
+## 状況一変しました
+
+### 使えるリソースが全部ある
+
+| リソース | 状況 |
+|---------|------|
+| Radxa 公式 BSP（Linux 5.15 + U-Boot） | **公開済み** `github.com/radxa/kernel` |
+| Allwinner 公式 SDK（Tina5.0）+ A733データシート | **NDA不要で公開済み**（2025年7月〜）`gitlab.com/tina5.0_aiot` |
+| U-Boot mainline パッチ | **v2投稿済み**（2025年11月）|
+| Armbian 対応議論 | **進行中** フォーラムあり |
+| Arch Linux ARM for A733 | **有志が既に移植済み** |
+
+前回「前例なし」と言いましたが Radxa が全部出してました。すみません。
+
+---
+
+## Windows ARM への道筋（更新版）
+
+```
+Step 1: Radxa BSP で Linux 起動       ← ほぼ確実にできる（イメージある）
+Step 2: TF-A BL31 を A733 に移植      ← SDK + データシートあるので現実的
+Step 3: EDK2 移植                     ← 大変だが情報は揃った
+Step 4: Windows ARM 起動
+```
+
+**最初のハードルが大幅に下がりました。** まず Radxa の公式 Debian イメージを焼いて動かしてみるところからですね。
+
+----------------------------------------
+
+[User]
+公式イメージはもう動かしたよ
+
+----------------------------------------
+
+[Claude]
+じゃあ Step 1 は完了です。
+
+次のステップは現在のブートチェーンを確認することです。
+
+```bash
+# 今のブートがTF-Aを使っているか確認
+cat /sys/firmware/devicetree/base/firmware/arm-trusted-firmware/compatible 2>/dev/null
+# または
+strings /dev/mmcblk0 | grep -i "bl31\|trusted" | head -20
+```
+
+あるいは U-Boot 起動ログに `BL31` の文字が出ていれば TF-A はすでにブートチェーンに入っています。
+
+**なぜ重要か**: TF-A BL31 がすでに動いているなら EDK2 移植に直接進める。動いていないなら TF-A の移植が先になります。
+
+起動ログか上記コマンドの結果見せてもらえますか？
+
+----------------------------------------
+
+[User]
+動かしたとは言ったけど環境があんま整ってないんよね
+後得られた知見は残しておいてほしい
+
+----------------------------------------
+
+[Claude]
+了解です。今回調査した知見をまとめて保存します。
+
+----------------------------------------
+
+[Claude]
+保存しました。
+
+- `software/Claude/specs/windows_arm.md` — SoCスペック・リソースURL・ブートロードマップ・6ステップ手順を全部まとめて記録
+- `PROGRESS.md` — Linux動作確認済みに更新、Windows ARMタスク追加
+
+環境が整ったら Step 2（ブートチェーン確認）から再開できます。
+
+----------------------------------------
+
+[User]
+公式イメージを焼いて分かったことなんだけど
+HDMIケーブルの品質が悪いのかわからんけど今回使うモニターにつなぐと画面が半分ブラックアウトする
+
+----------------------------------------
+
+[Claude]
+それ切り分けが必要ですね。いくつか確認させてください。
+
+- ブラックアウトするのは**左右半分**ですか？**上下半分**ですか？
+- 別のモニターや別のケーブルで試しましたか？
+- モニターの解像度・リフレッシュレートは何ですか？
+
+聞く理由：
+
+- **左右半分** → HDMI信号の帯域不足（ケーブル品質）またはDual-link系の問題の可能性
+- **上下半分** → タイミング（Vsync）やフレームバッファのオフセットずれの可能性
+- **解像度が高い（4K等）** → A733 の HDMI 出力が 4K@60 対応だがケーブルが HDMI 2.0 非対応だと帯域不足で崩れる
+
+----------------------------------------
+
+[User]
+モニターに関してはスペックあたりに書いてない?書いてなかったらLS055R1SX04これ
+1440x2560で50HzほかのPCだと正常に動作
+HDMIケーブルが家に在庫がなくて折れ目があるFPCタイプのやつ
+
+----------------------------------------
+
+[Claude]
+状況が分かりました。
+
+構成は `Cubie A7Z → 折れ目入りFPCケーブル → MIP-1000（TC358870XBG）→ LS055R1SX04` ですね。
+
+**原因はほぼ確実にそのケーブルです。**
+
+1440×2560@50Hz のピクセルクロックは約220MHz で、HDMI 1.4 の上限ギリギリです。折れ目がある FPC ケーブルはその箇所でインピーダンスが乱れて信号が劣化する。他のPCで正常に映るのは出力ドライブ強度が A733 と違うからだと思います。
+
+あと MIP-1000 は「1440×2560固定」なので解像度を下げて回避もできないんですよね。
+
+**対処**: 普通の HDMI ケーブルに換えるだけで直るはずです。本番の PCB では hdmi_adapter シートの FPC 経由になるので、その問題は出ません。今は検証用なので普通のケーブルが手に入ったら試してみてください。
+
+----------------------------------------
+
+[User]
+まぁ半分映ってるから見れないこともないからちょい試す
+
+----------------------------------------
+
+[Claude]
+了解です。どうぞ。何か気になること出てきたら聞いてください。
+
+----------------------------------------
+
+[User]
+いったん確認することを教えてほしい
+
+----------------------------------------
+
+[Claude]
+今の段階（公式イメージ、PCBなし）で確認しておくべきことです。
+
+---
+
+### 優先度高
+
+**1. ブートチェーン確認（Windows ARM への布石）**
+```bash
+# TF-A BL31 が使われているか
+cat /sys/firmware/devicetree/base/firmware/arm-trusted-firmware/compatible 2>/dev/null
+
+# U-Boot ログを確認（起動直後のシリアルログ or dmesg）
+dmesg | grep -i "bl31\|trusted\|arm-tf"
+```
+
+**2. USB 動作確認**
+```bash
+lsusb
+# RP2040 を後で繋いだときの認識確認用にポート把握しておく
+```
+
+**3. M.2 SSD 認識**
+```bash
+lspci
+lsblk
+```
+
+---
+
+### 優先度中
+
+**4. CPU・メモリ確認**
+```bash
+lscpu
+free -h
+cat /proc/cpuinfo | grep "model name" | head -1
+```
+
+**5. カーネルバージョン確認**
+```bash
+uname -r
+# 5.15.x-a733 系のはず
+```
+
+**6. GPU 認識確認**
+```bash
+ls /dev/dri/
+glmark2  # 入っていれば
+```
+
+---
+
+### Windows ARM 用に特に重要
+
+ブートチェーンの確認（1番）の結果次で次のステップが変わるので、そこだけでも見ておいてほしいです。
+
+----------------------------------------
+
+[User]
+D:\Projects\PortaRe0\software\com.txt
+
+----------------------------------------
+
+[Claude]
+かなり重要な情報が出てきました。順番に整理します。
+
+---
+
+## TF-A BL31
+
+DTB出力が空 + dmesgにBL31ログなし → **TF-Aは使われていないか、ログが出ない実装**の可能性。ただし後述の UEFI が答えを出してます。
+
+---
+
+## 超重要: UEFI がすでに動いている
+
+```
+mmcblk0p2  300M  /boot/efi   ← EFIシステムパーティション
+```
+
+`/boot/efi` が存在 = **U-Boot が UEFI モードで動作中**。
+
+U-Boot は 2018 年以降 UEFI 実装を内蔵していて、Radxa の BSP はそれを使っています。EDK2 を移植しなくても **U-Boot UEFI のまま Windows ARM を試せる可能性があります。**
+
+---
+
+## これ Windows インストーラーですよね
+
+```
+sdb1  29.3G  /media/radxa/CCCOMA_X64F
+```
+
+`CCCOMA` は Windows ARM ISO のファイル名パターンです。もう準備してましたね？
+
+---
+
+## その他
+
+| 項目 | 結果 |
+|------|------|
+| カーネル | 5.15.147-7-a733（BSP通り）|
+| CPU | 8コア aarch64（A76+A55、lscpuはA55表示のみ）|
+| RAM | 961MB（1GBモデル？または制限あり）|
+| GPU | card0/card1/renderD128 認識済み |
+| PCIe | `1f6d:abcd`（不明ベンダー、M.2未接続）|
+
+---
+
+## 次のステップ
+
+U-Boot UEFI がどこまで Windows ARM の要求を満たすか確認するのが先決です。
+
+```bash
+# U-Bootのバージョン・UEFI実装確認
+cat /sys/firmware/devicetree/base/chosen/u-boot,version 2>/dev/null
+strings /boot/efi/EFI/boot/*.efi 2>/dev/null | grep -i "bootloader\|grub\|systemd" | head -5
+ls /boot/efi/EFI/
+```
+
+----------------------------------------
+
+[User]
+ごめんUSBは適当にその辺にあったやつ
+
+----------------------------------------
+
+[Claude]
+あ、なるほどです。ただ `/boot/efi` の存在は本物なので、U-Boot UEFI が動いているのは確かです。
+
+上のコマンド試してみてもらえますか？U-Boot の UEFI 実装の程度が分かれば Windows ARM を直接試せるか判断できます。
+
+----------------------------------------
+
+[User]
+あとわかっていたけどかなり厚いね
+
+----------------------------------------
+
+[Claude]
+筐体設計に直接影響しますね。実測値分かりますか？背の高いコンデンサやコネクタ込みの最大高さが知りたいです。
+
+specs に記録しておきます。
+
+----------------------------------------
+
+[User]
+ごめん誤字熱い
+
+----------------------------------------
+
+[Claude]
+なるほど、熱ですね。
+
+冷却は specs にヒートパイプ + ヒートシンク + ファン（GP26 PWM制御）の構成が書いてあるので想定内ではあるんですが、どのくらい熱いですか？アイドルで触れないレベルですか？
+
+----------------------------------------
+
+[User]
+まだヒートパイプとかつけてないヒートシンク乗っけてるだけだからあれだけど指で長くは触ってられない
+
+----------------------------------------
+
+[Claude]
+ヒートシンクだけでそれなら、ファンは必須ですね。ヒートパイプ+ファンの構成で大分変わるはずです。
+
+QMK でのファン PWM 制御（GP26）はちゃんと作り込む必要がありそうです。温度取得は BQ25895 の I2C から PMIC 温度が読めるので、それをトリガーにする感じになりますかね。
+
+----------------------------------------
+
+[User]
+D:\Projects\PortaRe0\software\調査2.txt
+
+----------------------------------------
+
+[Claude]
+`/boot/efi/EFI/` が存在しない = **EFI ディレクトリ構造が空**です。
+
+パーティションはあるけど中身がない状態。Radxa の BSP は U-Boot から直接 extlinux.conf で Linux を起動している可能性が高いです。
+
+中身を確認してみてください：
+
+```bash
+sudo ls /boot/efi/
+sudo ls /boot/
+sudo cat /boot/extlinux/extlinux.conf 2>/dev/null || sudo find /boot -name "extlinux.conf" 2>/dev/null
+```
+
+----------------------------------------
+
+[User]
+D:\Projects\PortaRe0\software\調査3.txt
+
+----------------------------------------
+
+[Claude]
+全容が分かりました。
+
+**ブートチェーン: `SPL → U-Boot → extlinux.conf → Linux`**
+
+`/boot/efi/` は空っぽで全く使われていません。UEFI は今のところ一切動いていない状態です。
+
+---
+
+## Windows ARM への影響
+
+| 項目 | 状況 |
+|------|------|
+| 現在のブート | extlinux（非UEFI）|
+| /boot/efi | 空・未使用 |
+| Windows ARM に必要なもの | 完全な UEFI + ACPI テーブル |
+
+U-Boot 自体は UEFI モードを持っているので有効化は可能ですが、Windows ARM が要求する ACPI テーブルを U-Boot だけで満たすのは難しいです。EDK2 ポーティングが現実的な道になります。
+
+U-Boot のバージョンと UEFI サポートの有無を確認しておきます：
+
+```bash
+sudo strings /usr/lib/u-boot/*.itb 2>/dev/null | grep -i "u-boot\|version" | head -5
+# または
+sudo fw_printenv 2>/dev/null | head -20
+sudo strings /dev/mmcblk0 | grep -i "U-Boot 20" | head -3
+```
+
+----------------------------------------
+
+[User]
+どれ打ってもなんも出ねぇです
+
+----------------------------------------
+
+[Claude]
+```bash
+sudo hexdump -C /dev/mmcblk0 | grep -a "U-Boot" | head -5
+```
+
+それもダメなら：
+
+```bash
+sudo dd if=/dev/mmcblk0 bs=512 skip=64 count=2000 2>/dev/null | strings | grep -i "u-boot\|2018\|2024" | head -10
+```
+
+----------------------------------------
+
+[User]
+D:\Projects\PortaRe0\software\調査4.txt
+見た感じアイドル時3~5Wって感じ
+
+----------------------------------------
+
+[Claude]
+U-Boot のビルド日時: **2024-03-20** — 2024年ビルドなので UEFI サポートは比較的充実しているはずです。
+
+UEFI/ACPI が含まれているか確認します：
+
+```bash
+sudo dd if=/dev/mmcblk0 bs=512 skip=64 count=2000 2>/dev/null | strings | grep -i "efi\|acpi" | head -20
+```
+
+---
+
+アイドル 3〜5W について、バッテリー容量と合わせると：
+
+| 状態 | 消費電力 | 4200mAh(15.5Wh)での持ち時間 |
+|------|---------|--------------------------|
+| アイドル | 3〜5W | 3〜5時間 |
+| 高負荷 | 8〜12W想定 | 1.5〜2時間 |
+
+Cyberdeck としては及第点ですね。ファン PWM をしっかり作れば熱と電力の両立できそうです。
+
+----------------------------------------
+
+[User]
+sudo dd if=/dev/mmcblk0 bs=512 skip=64 count=2000 2>/dev/null | strings | grep -i "efi\|acpi" | head -20
+これ何も出ない
+
+----------------------------------------
+
+[Claude]
+それで確定です。**U-Boot に UEFI はコンパイルされていない。**
+
+---
+
+## 現状まとめ（Windows ARM）
+
+```
+現在:  SPL → U-Boot（UEFI無効）→ extlinux → Linux
+
+必要:  SPL → U-Boot or EDK2（UEFI+ACPI有効）→ Windows ARM
+```
+
+選択肢は2つ：
+
+**A. U-Boot を UEFI 有効でリビルド**
+- `github.com/radxa/u-boot` をベースに `CONFIG_EFI_LOADER=y` 等を有効化
+- ACPI テーブルが不足するので Windows ARM には不十分な可能性あり
+
+**B. EDK2 ポート（確実だが大変）**
+- 2025年11月に投稿された mainline U-Boot パッチ（A733対応）が先にマージされるのを待って、その上に EDK2 を乗せる方が楽になる
+
+---
+
+現時点では **環境整備・PCB完成を優先して、Windows ARM は mainline U-Boot パッチのマージ待ち** というのが現実的な判断だと思います。気長にやるならその間に EDK2 の構造を読み込んでおく感じで。
+
+----------------------------------------
+
+[User]
+EDK2 ポート
+U-Bootパッチがm－辞される見込みはあるの？
+
+----------------------------------------
+
+[Claude]
+v3 まで投稿されてますが、コアサポートはまだマージされていません。
+
+**現状:**
+- 2026年1月時点で maintainer が **"not quite ready"** と明言
+- GPIO ピンコントローラの設計方針で議論が止まっている
+- DDR 初期化をベンダーファームウェアに依存している問題も未解決
+- 早くても **v2026.07（7月）以降**の見込み
+
+---
+
+## EDK2 ポートへの影響
+
+そもそも U-Boot がマージされても **ACPI テーブルが無いので Windows ARM は起動しない**です。EDK2 は U-Boot とは別の話なので、mainline U-Boot のマージを待つ意味はほぼないです。
+
+現実的な EDK2 ポートの進め方：
+
+```
+今ある Radxa BSP U-Boot（2024-03-20ビルド）
+  ↓ この上に EDK2 を乗せる
+EDK2 for A733
+  ↓
+Windows ARM
+```
+
+参考にする既存実装：
+- **RPi4 EDK2**: https://github.com/pftf/RPi4 （構造が最も参考になる）
+- **Allwinner A64 UEFI断片**: https://github.com/awwiniot/UEFI-aw1689 （古いが Allwinner 固有の知見あり）
+
+やるなら U-Boot パッチのマージ待ちより今のBSPベースで始めた方が早いです。
+
+----------------------------------------
+
+[User]
+つまり今後の方針は？
+
+----------------------------------------
+
+[Claude]
+## 今後の方針
+
+### メイン（PortaRe0 完成）
+
+```
+今すぐ着手可能
+├─ RP2040 #1: QMK キーボードファームウェア
+└─ RP2040 #2: Pico SDK + TinyUSB オーディオ
+
+PCB完成後
+├─ Linux 側設定（ディスプレイ・SSD・USB HUB）
+└─ 全体統合
+```
+
+### Windows ARM（ロマン枠・並行）
+
+U-Boot mainline マージ待ちに意味はないので、**今の BSP ベースで EDK2 ポートを自力で進める。**
+
+```
+Step 1: RPi4 EDK2 のコード構造を読む（参考実装として）
+Step 2: Allwinner A733 向けに EDK2 をポート開始
+Step 3: UEFI Shell 起動を最初のマイルストーンに
+Step 4: Windows ARM 起動
+```
+
+---
+
+**優先度の整理:**
+
+| 優先度 | 内容 |
+|--------|------|
+| 高 | QMK・TinyUSB 開発（PCBが来たら即使える状態にする）|
+| 中 | Cubie A7Z 環境整備（ディストリ整備・Linux設定） |
+| 低（並行） | EDK2 調査・ポート作業 |
+
+まず着手するのは QMK ですか？それとも EDK2 から入りますか？
+
+----------------------------------------
+
+[User]
+まだ筐体がないとプログラムも何もって感じだから
+EDK2が優先的かなぁ
+
+----------------------------------------
+
+[Claude]
+確かに筐体・PCBなしで QMK も TinyUSB もテストできないですからね。Cubie A7Z 単体で進められる EDK2 が合理的です。
+
+---
+
+## EDK2 最初の一手
+
+まず RPi4 EDK2 の構造を読んで、何を実装すれば動くか把握するのが先です。
+
+```bash
+git clone https://github.com/pftf/RPi4
+```
+
+見るべきファイル：
+
+```
+RPi4/
+  edk2-platforms/Platform/RaspberryPi/RPi4/   ← ボード固有実装
+  edk2-platforms/Platform/RaspberryPi/Library/ ← 共通ライブラリ
+  firmware/                                    ← ビルド済みバイナリ
+  config.txt                                   ← ブート設定
+```
+
+RPi4 は GPU ファームウェアが早期初期化を担当していて、Allwinner とは構造が違う部分もあります。A733 に近い構造は：
+
+```
+SPL（DDR初期化済み）→ TF-A BL31 → EDK2（BL33として）→ Windows ARM
+```
+
+**まず確認しておきたいこと：**
+
+```bash
+# 今の SPL が TF-A を呼んでいるか確認
+sudo dd if=/dev/mmcblk0 bs=512 skip=64 count=4000 2>/dev/null | strings | grep -i "bl31\|ATF\|psci\|el3" | head -10
+```
+
+TF-A が含まれているかで次のステップが変わります。あとは RPi4 EDK2 のコードを読んでみてどう感じましたかに合わせて深掘りしましょう。
+
+----------------------------------------
+
+[User]
+ガンガンコマンドとか使って調べてもろて
+
+----------------------------------------
+
+[Claude]
+了解です。全部まとめて一気に実行できるスクリプトを作ります。
+
+```bash
+echo "=== 1. SPL/TF-A チェック ===" && \
+sudo dd if=/dev/mmcblk0 bs=512 skip=64 count=4000 2>/dev/null | strings | grep -iE "bl31|ATF|psci|el3|trusted|arm-tf" | head -20 && \
+
+echo "=== 2. U-Boot 詳細 ===" && \
+sudo dd if=/dev/mmcblk0 bs=512 skip=64 count=4000 2>/dev/null | strings | grep -iE "U-Boot 20[0-9]{2}|version|sunxi|a733" | head -20 && \
+
+echo "=== 3. eMMC パーティション詳細 ===" && \
+sudo fdisk -l /dev/mmcblk0 && \
+
+echo "=== 4. /config パーティション中身 ===" && \
+sudo ls -la /config/ && \
+
+echo "=== 5. DTB 確認 ===" && \
+sudo ls /usr/lib/linux-image-5.15.147-7-a733/ && \
+
+echo "=== 6. メモリマップ ===" && \
+sudo cat /proc/iomem | head -40 && \
+
+echo "=== 7. DRAM サイズ ===" && \
+sudo dmidecode -t memory 2>/dev/null || cat /proc/meminfo | head -5 && \
+
+echo "=== 8. 起動ログ（先頭50行） ===" && \
+sudo dmesg | head -50 && \
+
+echo "=== 9. PSCI 確認 ===" && \
+cat /sys/firmware/devicetree/base/psci/compatible 2>/dev/null && \
+cat /sys/firmware/devicetree/base/psci/method 2>/dev/null && \
+
+echo "=== 10. CPU 動作モード ===" && \
+cat /sys/firmware/devicetree/base/cpus/cpu@0/compatible 2>/dev/null && \
+cat /sys/firmware/devicetree/base/cpus/cpu@0/enable-method 2>/dev/null && \
+
+echo "=== DONE ==="
+```
+
+結果をテキストファイルに保存して貼ってください：
+
+```bash
+# 上のコマンドを bash スクリプトとして保存して実行
+bash 上のスクリプト > ~/調査5.txt 2>&1
+```
+
+----------------------------------------
+
+[User]
+git clone https://github.com/pftf/RPi4
+                                                                                                                                         見るべきファイル：                                                                                                                      
+  RPi4/                                                                                                                                
+    edk2-platforms/Platform/RaspberryPi/RPi4/   ← ボード固有実装
+    edk2-platforms/Platform/RaspberryPi/Library/ ← 共通ライブラリ                                                                      
+    firmware/                                    ← ビルド済みバイナリ                                                                  
+    config.txt                                   ← ブート設定                                                                          
+                                                                                                                                         RPi4 は GPU ファームウェアが早期初期化を担当していて、Allwinner とは構造が違う部分もあります。A733 に近い構造は：                                                                                                                                                           
+  SPL（DDR初期化済み）→ TF-A BL31 → EDK2（BL33として）→ Windows ARM 
+
+
+この辺も
+
+----------------------------------------
+
+[Claude]
+両方並行で調べます。調査5.txt も実行してもらいつつ、RPi4 EDK2 の構造を今すぐ調べます。
+
+----------------------------------------
+
+[Claude]
+RPi4 EDK2 の構造を調査中です。その間に 調査5.txt のコマンドも実行してもらえますか？両方揃ったら一緒に分析します。
+
+----------------------------------------
+
+[User]
+<task-notification>
+<task-id>afe2f0905fb159115</task-id>
+<tool-use-id>toolu_01MWMjHpRVAkppTsoLapN11d</tool-use-id>
+<output-file>C:\Users\yuu\AppData\Local\Temp\claude\D--Projects-PortaRe0\d3cf4311-40b4-4056-bac5-36e2447a8a40\tasks\afe2f0905fb159115.output</output-file>
+<status>completed</status>
+<summary>Agent "Analyze RPi4 EDK2 structure for A733 porting" completed</summary>
+<result>十分な情報が収集できました。調査結果をまとめます。
+
+---
+
+## 調査結果
+
+---
+
+## 1. RPi4 EDK2 リポジトリ構造の分析
+
+### リポジトリ構成（https://github.com/pftf/RPi4）
+
+```
+RPi4/
+├── edk2/               # EDK2 コア（サブモジュール）
+├── edk2-non-osi/       # 非OSSコンポーネント（サブモジュール）
+├── edk2-platforms/     # プラットフォームコード（サブモジュール）
+├── firmware/           # BCM WiFiファームウェアバイナリ
+├── config.txt          # GPU/UART設定
+├── .gitmodules         # 3つのサブモジュール定義
+└── .github/workflows/linux_edk2.yml  # CI ビルド定義
+```
+
+実際のRPi4固有コードは **edk2-platforms サブモジュール**内の以下にある：
+
+```
+edk2-platforms/Platform/RaspberryPi/
+├── RPi4/
+│   ├── RPi4.dsc        # プラットフォームビルド定義（メインエントリ）
+│   └── RPi4.fdf        # フラッシュレイアウト定義
+├── AcpiTables/         # ACPIテーブル（.aslc/.asl形式）
+│   ├── Madt.aslc       # 割り込みコントローラ定義
+│   ├── Gtdt.aslc       # タイマー定義
+│   ├── Dsdt.asl        # メインデバイス記述
+│   ├── Fadt.aslc / Iort.aslc / Pptt.aslc など
+├── Drivers/
+│   ├── ConfigDxe/      # ランタイム設定（HII/VFR UI）
+│   ├── DisplayDxe/     # GPU Mailbox経由ディスプレイ
+│   ├── ArasanMmcHostDxe/  # eMMC/SD
+│   ├── DwUsbHostDxe/   # USB DesignWare ホスト
+│   ├── RpiFirmwareDxe/ # GPU Mailbox通信
+│   ├── VarBlockServiceDxe/ # NVRAM変数ストレージ
+│   └── FdtDxe/         # Device Tree引き渡し
+├── Library/
+│   ├── PlatformLib/    # ArmPlatformLib実装（コア）
+│   │   ├── RaspberryPi.c       # SEC/PEI初期化、MPcore情報
+│   │   ├── RaspberryPiMem.c    # メモリマップ（DRAM/MMIO）
+│   │   └── AArch64/RaspberryPiHelper.S
+│   ├── MemoryInitPeiLib/       # PEIメモリ初期化
+│   ├── PlatformBootManagerLib/ # Boot Manager
+│   └── DualSerialPortLib/      # UART0/UART1切替
+├── Include/
+└── RaspberryPi.dec     # パッケージ公開定義
+```
+
+加えて Silicon 層も分離されている：
+
+```
+edk2-platforms/Silicon/Broadcom/
+├── Bcm27xx/            # BCM2711 PCI HostBridge ライブラリ
+└── Bcm283x/            # GPIO, Mailbox, GenetEth ドライバ
+```
+
+### ブートフロー
+
+```
+GPU Firmware (start4.elf)
+  └─→ TF-A (BL31) ← RPI_EFI.fd の先頭 0x20000 バイトに格納
+        └─→ EDK2 SEC (PeilessSec) ← 0x20000 offset
+              └─→ DXE Core
+                    └─→ BDS → bootaa64.efi (OS loader)
+```
+
+- TF-A は **EDK2 FDイメージ内に埋め込まれて**おり、RPiのGPUファームウェアが直接ロードする
+- GPU ファームウェアは ARM を EL2 で起動し TF-A が EL3 → EL2 → EDK2 を受け渡す
+- RPi4 は TF-A が必須（EL3 対応のため）；RPi3 では TF-A なしで動作可能
+
+### フラッシュレイアウト（RPi4.fdf）
+
+```
+FD 総サイズ: 0x3E0000 (約4MB)
+  0x000000: TF-A BL31           0x20000
+  0x020000: UEFI本体(圧縮)      0x390000
+  0x3B0000: NVRAM変数領域       0xE000
+  0x3BF000: FTW spare
+```
+
+### A733 移植で参考になる部分・ならない部分
+
+**参考になる：**
+- `PlatformLib/RaspberryPiMem.c` のメモリマップ記述方法（DRAM+MMIO+FW領域の分割）
+- `AcpiTables/` の構成（MADT/GTDT/DSDT/FADT の .aslc + .asl 分割方式）
+- `RPi4.fdf` のフラッシュレイアウト設計（TF-A + EDK2 結合方式）
+- `VarBlockServiceDxe` のファイルシステム上変数ストレージ（eMMCベースNVRAM）
+
+**参考にならない：**
+- `RpiFirmwareDxe` / `DisplayDxe` → BCM GPU Mailbox 専用、A733 には不適
+- `DwUsbHostDxe` → RPi固有のDesignWare OTGラッパー、A733のUSBコントローラは別実装が必要
+- `ConfigDxe` の一部機能（GPU RAM分割・3GBリミット回避）→ RPi固有の制約
+
+---
+
+## 2. edk2-platforms の ARM SBC 向け実装例
+
+`Platform/` ディレクトリの構成：
+
+```
+Platform/
+├── 96Boards/           # LG ConnectorDxe等 汎用ボード
+├── ARM/                # NeoverseN1Soc 等 ARM公式評価ボード
+├── RaspberryPi/        # RPi3/4（上述）
+├── SolidRun/           # Armada80x0（Marvell ARMv8 SBC）
+├── Qemu/               # AArch64 QEMU仮想機（最小構成参考に最適）
+├── NXP/                # i.MX系
+├── Qualcomm/           # Snapdragon
+├── Bosc/               # RISC-V 系
+├── Sophgo/             # RISC-V系SBC
+└── ...
+```
+
+**Allwinner・Rockchip の実装は edk2-platforms 本体には存在しない。**
+
+SBC移植の最小構成参考として最も適切なのは：
+
+- `Platform/Qemu/` → 仮想化で動作確認済み、PCI/GPIO 依存が最小
+- `Platform/SolidRun/Armada80x0McBin/` → Marvell ARMv8 SBC、`BoardDescLib` パターンが明確
+- `Silicon/AMD/Xilinx/ZynqMpPkg/` → 組み込みSoC向けのシンプルな構成、`ArmPlatformHelper.S` の書き方が参考になる
+
+---
+
+## 3. EDK2 を ARM64 ボードにポートするための最小構成
+
+### 必須ファイル構成
+
+新規プラットフォーム `AllwinnerA733Pkg/` を作る場合の最小セット：
+
+```
+Platform/Allwinner/A733/
+├── A733.dsc            # ビルドエントリ（アーキ・ライブラリ・ドライバ列挙）
+├── A733.fdf            # フラッシュレイアウト（FD領域・FV構成）
+├── A733.dec            # パッケージ公開定義（GUID・PCD）
+├── AcpiTables/
+│   ├── AcpiTables.inf
+│   ├── Madt.aslc       # GIC-400 (GICv2) + 4コア定義
+│   ├── Gtdt.aslc       # ARMv8汎用タイマー IRQ 29/30/27/26
+│   ├── Fadt.aslc       # HW_REDUCED_ACPI フラグ設定
+│   └── Dsdt.asl        # デバイス記述 (UART, GPIO, eMMC 等)
+└── Library/
+    └── PlatformLib/
+        ├── PlatformLib.inf         # ArmPlatformLib クラスを実装
+        ├── A733Platform.c          # ArmPlatformInitialize() 等
+        ├── A733PlatformMem.c       # メモリマップ (GetVirtualMemoryMap)
+        └── AArch64/A733Helper.S   # CPU初期化アセンブリ
+```
+
+### 必須ライブラリクラスと実装要否
+
+| ライブラリクラス | 実装要否 | 既存流用可否 |
+|---|---|---|
+| `ArmPlatformLib` | **自作必須** | テンプレートはZynqMP/RPi参照 |
+| `SerialPortLib` | **自作必須** | Allwinner UART0 (16550互換なら `BaseSerialPortLib16550` 流用可) |
+| `TimerLib` | ArmArchTimer使用ならArmPkg提供品で可 | 流用可 |
+| `ResetSystemLib` | **自作必須** | PMIC (AXP) または WDOG制御 |
+| `RealTimeClockLib` | 要実装 | 汎用実装あり |
+| `MemoryInitPeiLib` | **自作必須** | DRAM既初期化ならシンプルで良い |
+
+**EDK2 起動に最低限必要なドライバ（DXE）：**
+
+```
+ArmPkg/Drivers/CpuDxe         # CPU例外ハンドラ・MMU
+ArmPkg/Drivers/ArmGic         # GIC-400 割り込みコントローラ
+ArmPkg/Drivers/TimerDxe       # ARMv8 汎用タイマー
+MdeModulePkg/Core/Dxe         # DXEコア本体
+MdeModulePkg/Universal/Variable/RuntimeDxe  # EFI変数
+```
+
+### ACPIテーブル生成方法（Windows ARM に必須）
+
+EDK2での標準的な方法は `.aslc` 形式（Cコードで構造体を直接定義）：
+
+```c
+// Madt.aslc 例（A733/GIC-400向け）
+EFI_ACPI_6_0_MULTIPLE_APIC_DESCRIPTION_TABLE Madt = {
+  {
+    ACPI_HDR(EFI_ACPI_6_0_MULTIPLE_APIC_DESCRIPTION_TABLE_SIGNATURE,
+             sizeof(Madt), EFI_ACPI_6_0_MULTIPLE_APIC_DESCRIPTION_TABLE_REVISION),
+    0x00000000,  // Local Interrupt Controller Address（GICv2では0）
+    EFI_ACPI_6_0_PCAT_COMPAT,
+  },
+  // GICC × 4コア
+  { EFI_ACPI_6_0_GIC_INIT(0, 0, GET_MPID(0,0), 152, 0, 0x01C82000, 0, 0, 0) },
+  ...
+  // GICD
+  EFI_ACPI_6_0_GIC_DISTRIBUTOR_INIT(0, 0x01C81000, 0, 2),
+};
+```
+
+A733 のGIC情報はLinuxカーネルのDTS（`sun50i-h616.dtsi` 等）から転記できる。GTDT は ARM汎用タイマーならほぼ全SoCで IRQ 29/30/27/26 で共通。
+
+Windows ARM が要求する最低限の ACPI テーブルセット：**FADT + MADT + GTDT + DSDT**。Windowsドライバがある周辺機器には CSRT (DMA) や SDHC (ACPI SDカード) も追加が必要。
+
+---
+
+## 4. Allwinner 向け EDK2 先行事例
+
+### https://github.com/awwiniot/UEFI-aw1689
+
+対象SoC：**Allwinner A64 (sun50iw1p1)** — Cortex-A53 × 4 (AArch64)  
+対象ボード：Pine64, Banana Pi M64  
+目的：**Windows 10 IoT Core の動作**
+
+リポジトリ構成：
+
+```
+UEFI-aw1689/
+├── arm-trusted-firmware-1.0/   # A64向けTF-A (plat/sun50iw1p1)
+└── edk2/
+    ├── SunxiPlatformPkg/       # Allwinner共通プラットフォーム
+    │   ├── Driver/
+    │   │   ├── AxpPower/       # AXP81X/22X/809 PMIC ドライバ（I2C経由）
+    │   │   ├── AcpiPlatformDxe/
+    │   │   └── (USB, Eth等)
+    │   ├── Library/
+    │   │   ├── SunxiSmcLib/    # SMC呼び出しラッパー（TF-A連携）
+    │   │   └── SunxiBootInfoLib/ 等
+    │   ├── MemoryInitPei/      # PEIメモリ初期化
+    │   ├── PlatformPei/        # プラットフォームPEIM
+    │   ├── PrePi/              # SEC代替モジュール
+    │   └── sun50iw1p1Pkg/      # A64固有実装
+    │       ├── sun50iw1p1Pkg.dsc / .fdf
+    │       ├── Driver/AcpiTables/  # MADT/GTDT/DSDT/FADT
+    │       └── Driver/(NAND, Eth, USB, Display等)
+    └── ArmPlatformPkg/         # ARM標準（ArmJuno等含む）
+```
+
+**A64の主要ACPI設定値（A733参考用）：**
+
+| 項目 | A64 (sun50iw1p1) 値 | A733参考 |
+|------|------|------|
+| GIC CPU Interface | 0x01C82000 | 要確認 |
+| GIC Distributor | 0x01C81000 | 要確認 |
+| PMU IRQ Core0-3 | 152-155 | DTSから取得 |
+| CPU Parking Mailbox | 0x7EF8{0-3}000 | 要確認 |
+| FD Base Address | 0x4A000000 | 要確認 |
+| System Memory Base | 0x41000000 | 要確認 |
+| GTDT Timer IRQs | 29, 30, 27, 26 | 同じ（ARM標準） |
+
+**AxpPower ドライバが充実している**（AXP22X/806/808/809/81X全対応）。A733に搭載されるPMICがAXP系であれば `SunxiPlatformPkg/Driver/AxpPower/` をほぼそのまま流用できる。
+
+**注意点：** このリポジトリは TF-A 1.0 (2014年) を使用しており、現在の TF-A (2.x) とは大きく構造が異なる。A733向けには現行の TF-A を使用することを推奨。
+
+### その他の関連リソース
+
+- **Rockchip向けEDK2**（個人プロジェクト多数）：`jaredmcneill/edk2-rk3588` 等、最近のものはより現代的な実装
+- **Sunxi-community**：A64向けUBOOT + TF-A のメインライン化が済んでおり、A733もAllwinnerの新型SoCであれば同様の構造になる可能性が高い
+- **edk2-platforms に Allwinner が追加されていない理由**：Allwinnerの公式関与がなく、コミュニティ主導のため upstream にマージされていない
+
+---
+
+## A733 移植の推奨アプローチ
+
+1. **TF-A 移植先行**：`trusted-firmware-a/plat/allwinner/` に A733 プラットフォームを追加（sun50i_h616 が最も近い先行事例）
+2. **EDK2 テンプレート**：`awwiniot/UEFI-aw1689` の `sun50iw1p1Pkg` 構造を参考にしつつ、RPi4の `edk2-platforms/Platform/RaspberryPi/` のDSC/FDF構造（より現代的）に書き直す
+3. **ACPI テーブル**：A733 Linux カーネル DTS から GIC/タイマー/UARTアドレスを転記して `.aslc` ファイルを作成
+4. **SerialPortLib**：まず UART のみ動かして `DEBUG()` マクロで起動ログを取るのが最速</result>
+<usage><total_tokens>43485</total_tokens><tool_uses>43</tool_uses><duration_ms>300353</duration_ms></usage>
+</task-notification>
+Full transcript available at: C:\Users\yuu\AppData\Local\Temp\claude\D--Projects-PortaRe0\d3cf4311-40b4-4056-bac5-36e2447a8a40\tasks\afe2f0905fb159115.output
+
+----------------------------------------
+
+[Claude]
+調査結果まとめます。かなり具体的になりました。
+
+---
+
+## EDK2 移植に必要なもの（全容）
+
+### ブートチェーン（目標）
+```
+SPL → TF-A BL31 → EDK2 SEC → DXE → BDS → Windows ARM
+```
+
+### 実装が必要なファイル構成
+```
+Platform/Allwinner/A733/
+├── A733.dsc / .fdf / .dec     ← ビルド定義
+├── AcpiTables/
+│   ├── Madt.aslc              ← GIC割り込みコントローラ定義
+│   ├── Gtdt.aslc              ← ARMv8タイマー（IRQ 29/30/27/26）
+│   ├── Fadt.aslc              ← HW_REDUCED_ACPIフラグ
+│   └── Dsdt.asl               ← UART/GPIO/eMMCデバイス記述
+└── Library/PlatformLib/
+    ├── A733Platform.c          ← メモリマップ・初期化
+    └── AArch64/A733Helper.S   ← CPUアセンブリ
+```
+
+### 流用できるもの
+
+| コンポーネント | 流用元 | 備考 |
+|--------------|--------|------|
+| AXP PMIC ドライバ | `awwiniot/UEFI-aw1689` SunxiPlatformPkg | A733のPMICがAXP系ならほぼそのまま |
+| ACPI GTDT | どのARM SBCでも共通 | IRQ 29/30/27/26は全ARM同じ |
+| GICアドレス | A64 DTS参考 + A733 DTS確認 | `0x01C81000` / `0x01C82000` 付近のはず |
+| DXEコアドライバ群 | ArmPkg標準 | CPU/GIC/Timer は流用可 |
+| SerialPortLib | 16550互換なら既存流用 | AllwinnerのUARTは16550互換 |
+
+### 自作が必要なもの
+- `ArmPlatformLib`（メモリマップ・A733固有初期化）
+- `ResetSystemLib`（PMIC経由リセット）
+- A733固有の TF-A BL31
+
+---
+
+## 推奨する進め方
+
+```
+Step 1: A733 の DTS からGIC/タイマーアドレスを確認
+        → Linux 上で cat /sys/firmware/devicetree/base/interrupt-controller*/compatible
+        
+Step 2: TF-A を A733 向けにポート
+        → trusted-firmware-a/plat/allwinner/ の sun50i_h616 が最近傍
+
+Step 3: EDK2 テンプレートを awwiniot/UEFI-aw1689 ベースで作成
+        → sun50iw1p1Pkg を A733 向けに書き直す
+
+Step 4: UART だけ動かして DEBUG() ログを取る
+        → これが最初のマイルストーン
+```
+
+---
+
+調査5.txt も来たら TF-A の有無と GIC アドレスが確定します。送ってもらえますか？
+
+あと specs に今回の知見を追記しておきます。
+
+----------------------------------------
+
+[Claude]
+specs 更新しました。調査5.txt 来たら Step 1 の GIC アドレス確認に進みます。
+
+----------------------------------------
+
+[User]
+ごめんけどもう寝るからさD:\Projects\PortaRe0\software\Claude\CLOSING.md
+
+----------------------------------------
+
+[Claude]
+では終了処理を進めます。
+
+----------------------------------------
+

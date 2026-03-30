@@ -1,0 +1,93 @@
+radxa@radxa-cubie-a7z:~$ cat /sys/firmware/devicetree/base/firmware/arm-trusted-firmware/compatible 2>/dev/null
+radxa@radxa-cubie-a7z:~$ dmesg | grep -i "bl31\|trusted\|arm-tf"  
+dmesg: read kernel buffer failed: Operation not permitted
+radxa@radxa-cubie-a7z:~$ sudo
+usage: sudo -h | -K | -k | -V
+usage: sudo -v [-AknS] [-g group] [-h host] [-p prompt] [-u user]
+usage: sudo -l [-AknS] [-g group] [-h host] [-p prompt] [-U user] [-u user]
+            [command]
+usage: sudo [-AbEHknPS] [-r role] [-t type] [-C num] [-D directory] [-g
+            group] [-h host] [-p prompt] [-R directory] [-T timeout] [-u
+            user] [VAR=value] [-i|-s] [<command>]
+usage: sudo -e [-AknS] [-r role] [-t type] [-C num] [-D directory] [-g
+            group] [-h host] [-p prompt] [-R directory] [-T timeout] [-u
+            user] file ...
+radxa@radxa-cubie-a7z:~$ sudo cat /sys/firmware/devicetree/base/firmware/arm-trusted-firmware/compatible 2>/dev/null
+
+We trust you have received the usual lecture from the local System
+Administrator. It usually boils down to these three things:
+
+    #1) Respect the privacy of others.
+    #2) Think before you type.
+    #3) With great power comes great responsibility.
+
+[sudo] password for radxa:     
+radxa@radxa-cubie-a7z:~$ sudo dmesg | grep -i "bl31\|trusted\|arm-tf"   
+[    0.171600] Initialise system trusted keyrings
+radxa@radxa-cubie-a7z:~$  lsusb  
+Bus 004 Device 001: ID 1d6b:0001 Linux Foundation 1.1 root hub
+Bus 003 Device 003: ID a69c:8d81 AICSemi AIC 8800D80
+Bus 003 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 002 Device 003: ID 05e3:0749 Genesys Logic, Inc. SD Card Reader and Writer
+Bus 002 Device 002: ID 05e3:0612 Genesys Logic, Inc. Hub
+Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 001 Device 006: ID 239a:8029 Adafruit XIAO nRF52840 Sense
+Bus 001 Device 007: ID 346d:5678 USB Disk 2.0
+Bus 001 Device 002: ID 05e3:0610 Genesys Logic, Inc. Hub
+Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+radxa@radxa-cubie-a7z:~$ lspci    
+00:00.0 PCI bridge: Device 1f6d:abcd (rev 01)
+radxa@radxa-cubie-a7z:~$  lsblk 
+NAME        MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+sdb           8:16   1  29.3G  0 disk 
+└─sdb1        8:17   1  29.3G  0 part /media/radxa/CCCOMA_X64F
+mmcblk0     179:0    0 119.2G  0 disk 
+├─mmcblk0p1 179:1    0    16M  0 part /config
+├─mmcblk0p2 179:2    0   300M  0 part /boot/efi
+└─mmcblk0p3 179:3    0 118.9G  0 part /
+zram0       254:0    0 480.8M  0 disk [SWAP]
+radxa@radxa-cubie-a7z:~$ lscpu
+Architecture:                       aarch64
+CPU op-mode(s):                     32-bit, 64-bit
+Byte Order:                         Little Endian
+CPU(s):                             8
+On-line CPU(s) list:                0-7
+Thread(s) per core:                 1
+Core(s) per socket:                 4
+Socket(s):                          2
+Vendor ID:                          ARM
+Model:                              0
+Model name:                         Cortex-A55
+Stepping:                           r2p0
+CPU max MHz:                        2002.0000
+CPU min MHz:                        416.0000
+BogoMIPS:                           48.00
+Vulnerability Gather data sampling: Not affected
+Vulnerability Itlb multihit:        Not affected
+Vulnerability L1tf:                 Not affected
+Vulnerability Mds:                  Not affected
+Vulnerability Meltdown:             Not affected
+Vulnerability Mmio stale data:      Not affected
+Vulnerability Retbleed:             Not affected
+Vulnerability Spec rstack overflow: Not affected
+Vulnerability Spec store bypass:    Mitigation; Speculative Store Bypass dis
+                                    abled via prctl
+Vulnerability Spectre v1:           Mitigation; __user pointer sanitization
+Vulnerability Spectre v2:           Mitigation; CSV2, BHB
+Vulnerability Srbds:                Not affected
+Vulnerability Tsx async abort:      Not affected
+Flags:                              fp asimd aes pmull sha1 sha2 crc32 atomi
+                                    cs fphp asimdhp cpuid asimdrdm lrcpc dcp
+                                    op asimddp
+radxa@radxa-cubie-a7z:~$ free -h
+               total        used        free      shared  buff/cache   available
+Mem:           961Mi       663Mi       106Mi        27Mi       191Mi       215Mi
+Swap:          480Mi       230Mi       250Mi
+radxa@radxa-cubie-a7z:~$ cat /proc/cpuinfo | grep "model name" | head -1 
+radxa@radxa-cubie-a7z:~$ uname -r
+5.15.147-7-a733
+radxa@radxa-cubie-a7z:~$ ls /dev/dri/
+by-path  card0  card1  renderD128
+radxa@radxa-cubie-a7z:~$ glmark2
+bash: glmark2: command not found
+radxa@radxa-cubie-a7z:~$
