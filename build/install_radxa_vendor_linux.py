@@ -700,8 +700,12 @@ def write_grub_cfg(target_root: Path, profile: str) -> None:
     run_id = time.strftime("%Y%m%d-%H%M%S")
     profile_banner = profile
     systemd_target = ""
+    systemd_mask = ""
     if profile == "xorg-direct":
         systemd_target = "systemd.unit=multi-user.target "
+    elif profile == "graphical-x11":
+        systemd_target = "systemd.unit=graphical.target "
+        systemd_mask = "systemd.mask=porta-x11-direct.service "
 
     cfg = (
         "set pager=0\n"
@@ -724,6 +728,7 @@ def write_grub_cfg(target_root: Path, profile: str) -> None:
         "systemd.journald.forward_to_console=1 "
         "systemd.log_target=console systemd.log_level=debug "
         f"{systemd_target}"
+        f"{systemd_mask}"
         "plymouth.enable=0 "
         f"porta_runid={run_id} "
         "cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory "
