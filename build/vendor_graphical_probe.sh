@@ -28,12 +28,40 @@ for p in /tmp/.X11-unix /run/sddm /var/run/sddm /var/log/sddm.log; do
 done
 vlog "x11-socket-end"
 
+vlog "x11-socket-list-begin"
+for p in /tmp/.X11-unix /tmp/.X*-lock; do
+  if [ -e "$p" ]; then
+    ls -ld "$p" 2>/dev/null | while IFS= read -r line; do
+      vlog "ls $line"
+    done
+  fi
+done
+vlog "x11-socket-list-end"
+
 if [ -f /var/log/sddm.log ]; then
   vlog "sddm-log-begin"
   tail -n 80 /var/log/sddm.log 2>/dev/null | while IFS= read -r line; do
     vlog "sddm $line"
   done
   vlog "sddm-log-end"
+fi
+
+for p in /var/log/Xorg.0.log /var/log/Xorg.0.log.old /var/log/sddm.log.old; do
+  if [ -f "$p" ]; then
+    vlog "logfile-begin $p"
+    tail -n 80 "$p" 2>/dev/null | while IFS= read -r line; do
+      vlog "log $line"
+    done
+    vlog "logfile-end $p"
+  fi
+done
+
+if command -v journalctl >/dev/null 2>&1; then
+  vlog "journal-sddm-begin"
+  journalctl -b -u sddm --no-pager -n 80 2>/dev/null | while IFS= read -r line; do
+    vlog "journal $line"
+  done
+  vlog "journal-sddm-end"
 fi
 
 vlog "done"
