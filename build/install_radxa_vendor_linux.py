@@ -36,6 +36,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_VENDOR_BOOT = SCRIPT_DIR.parent / "roms" / "_work" / "radxa_vendor_boot"
 DEFAULT_VENDOR_IMAGE = SCRIPT_DIR.parent / "roms" / "_work" / "radxa-cubie-a7z_bullseye_kde_b1.output_512.img"
 DISK_PATH = r"\\.\PhysicalDrive3"
+BOOT_PROFILES = ("xorg-direct", "graphical-x11")
 
 # Radxa vendor image GPT layout from fdisk -l
 VENDOR_ROOT_START_SECTOR = 679_936
@@ -179,6 +180,96 @@ def copy_file(src: Path, dst: Path) -> None:
     if dst.exists():
         os.chmod(dst, stat.S_IWRITE)
     shutil.copy2(src, dst)
+
+
+def write_text_file(dst: Path, text: str, executable: bool = False) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists():
+        os.chmod(dst, stat.S_IWRITE)
+    dst.write_text(text, encoding="utf-8", newline="\n")
+    if executable:
+        os.chmod(dst, 0o755)
+
+
+def copy_executable(src: Path, dst: Path) -> None:
+    copy_file(src, dst)
+    os.chmod(dst, 0o755)
+
+
+def remove_path(path: Path) -> None:
+    if not path.exists() and not path.is_symlink():
+        return
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        os.chmod(path, stat.S_IWRITE)
+        path.unlink()
+
+
+def ensure_symlink(link_path: Path, target: str) -> None:
+    link_path.parent.mkdir(parents=True, exist_ok=True)
+    remove_path(link_path)
+    os.symlink(target, link_path)
+
+
+def mask_systemd_unit(rootfs: Path, unit_name: str) -> None:
+    ensure_symlink(rootfs / "etc" / "systemd" / "system" / unit_name, "/dev/null")
+
+
+def unmask_systemd_unit(rootfs: Path, unit_name: str) -> None:
+    link_path = rootfs / "etc" / "systemd" / "system" / unit_name
+    if not link_path.is_symlink():
+        return
+    if os.readlink(link_path) == "/dev/null":
+        link_path.unlink()
+
+
+def enable_systemd_unit(rootfs: Path, unit_name: str, target_name: str) -> None:
+    wants_path = rootfs / "etc" / "systemd" / "system" / f"{target_name}.wants" / unit_name
+    ensure_symlink(wants_path, f"../{unit_name}")
+
+
+def disable_systemd_unit(rootfs: Path, unit_name: str, target_name: str) -> None:
+    remove_path(rootfs / "etc" / "systemd" / "system" / f"{target_name}.wants" / unit_name)
+
+
+def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
+    if profile not in BOOT_PROFILES:
+        fail(f"Unsupported rootfs profile: {profile}")
+
+    if not rootfs.exists() or not rootfs.is_dir():
+        fail(f"Mounted rootfs directory not found: {rootfs}")
+
+    xsetup_target = rootfs / "usr" / "share" / "sddm" / "scripts" / "Xsetup"
+    write_text_file(
+        xsetup_target,
+        (SCRIPT_DIR / "vendor_Xsetup.sh").read_text(encoding="utf-8"),
+        executable=True,
+    )
+
+    if profile == "xorg-direct":
+        copy_executable(SCRIPT_DIR / "vendor_porta-x11-direct.sh", rootfs / "usr" / "bin" / "porta-x11-direct")
+        copy_executable(SCRIPT_DIR / "vendor_porta-x11-session.sh", rootfs / "usr" / "bin" / "porta-x11-session")
+        write_text_file(
+            rootfs / "etc" / "systemd" / "system" / "porta-x11-direct.service",
+            (SCRIPT_DIR / "vendor_porta-x11-direct.service").read_text(encoding="utf-8"),
+        )
+        enable_systemd_unit(rootfs, "porta-x11-direct.service", "multi-user.target")
+        disable_systemd_unit(rootfs, "porta-x11-direct.service", "graphical.target")
+        mask_systemd_unit(rootfs, "sddm.service")
+        mask_systemd_unit(rootfs, "hdmi-toggle-once.service")
+        remove_path(rootfs / "etc" / "sddm.conf.d" / "10-porta-x11.conf")
+    else:
+        write_text_file(
+            rootfs / "etc" / "sddm.conf.d" / "10-porta-x11.conf",
+            (SCRIPT_DIR / "vendor_sddm_x11.conf").read_text(encoding="utf-8"),
+        )
+        unmask_systemd_unit(rootfs, "sddm.service")
+        mask_systemd_unit(rootfs, "hdmi-toggle-once.service")
+        disable_systemd_unit(rootfs, "porta-x11-direct.service", "multi-user.target")
+        disable_systemd_unit(rootfs, "porta-x11-direct.service", "graphical.target")
+
+    print(f"Applied rootfs profile '{profile}' to {rootfs}")
 
 
 def align4(value: int) -> int:
@@ -482,12 +573,20 @@ def apply_vendor_psci_overlay(src: Path, dst: Path) -> None:
         copy_file(dtb_out, dst)
 
 
-def write_grub_cfg(target_root: Path) -> None:
+def write_grub_cfg(target_root: Path, profile: str) -> None:
+    if profile not in BOOT_PROFILES:
+        fail(f"Unsupported boot profile: {profile}")
+
     run_id = time.strftime("%Y%m%d-%H%M%S")
+    profile_banner = profile
+    systemd_target = ""
+    if profile == "xorg-direct":
+        systemd_target = "systemd.unit=multi-user.target "
+
     cfg = (
         "set pager=0\n"
         "set debug=\n"
-        f"echo [grub] vendor linux xorg-direct boot runid={run_id}\n"
+        f"echo [grub] vendor linux {profile_banner} boot runid={run_id}\n"
         "linux /vendor/vmlinuz-5.15.147-7-a733 "
         "root=/dev/mmcblk0p3 rootfstype=ext4 rootdelay=2 "
         "console=ttyAS0,115200n8 "
@@ -504,7 +603,7 @@ def write_grub_cfg(target_root: Path) -> None:
         "systemd.show_status=1 "
         "systemd.journald.forward_to_console=1 "
         "systemd.log_target=console systemd.log_level=debug "
-        "systemd.unit=multi-user.target "
+        f"{systemd_target}"
         "plymouth.enable=0 "
         f"porta_runid={run_id} "
         "cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory "
@@ -532,7 +631,7 @@ def write_startup_script(target_root: Path) -> None:
     (target_root / "startup.nsh").write_text(script, encoding="ascii", newline="")
 
 
-def install_vendor_boot(vendor_boot: Path, target_root: Path) -> None:
+def install_vendor_boot(vendor_boot: Path, target_root: Path, profile: str) -> None:
     required = [
         vendor_boot / "vmlinuz-5.15.147-7-a733",
         vendor_boot / "initrd.img-5.15.147-7-a733",
@@ -568,7 +667,7 @@ def install_vendor_boot(vendor_boot: Path, target_root: Path) -> None:
         target_root / "debug" / "porta-initrd.cpio",
         target_root / "vendor" / "initrd-merged.img",
     )
-    write_grub_cfg(target_root)
+    write_grub_cfg(target_root, profile)
     write_startup_script(target_root)
 
 
@@ -614,6 +713,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vendor-boot", default=str(DEFAULT_VENDOR_BOOT), help="Directory containing extracted vendor boot assets.")
     parser.add_argument("--vendor-image", default=str(DEFAULT_VENDOR_IMAGE), help="Raw Radxa disk image used as rootfs source.")
     parser.add_argument("--target", default="F:\\", help="Mounted FAT32 WINSTALL target. Default: F:\\")
+    parser.add_argument(
+        "--boot-profile",
+        choices=BOOT_PROFILES,
+        default="xorg-direct",
+        help="Boot flow to configure in grub.cfg.",
+    )
+    parser.add_argument(
+        "--rootfs-dir",
+        help="Mounted vendor rootfs directory to patch with matching userspace services.",
+    )
     parser.add_argument("--skip-rootfs-copy", action="store_true", help="Only refresh EFI/FAT boot files; do not overwrite partition 3.")
     return parser.parse_args()
 
@@ -629,9 +738,14 @@ def main() -> None:
     if not args.skip_rootfs_copy:
         copy_vendor_rootfs(image_path)
 
-    install_vendor_boot(vendor_boot, target_root)
+    install_vendor_boot(vendor_boot, target_root, args.boot_profile)
+    if args.rootfs_dir:
+        apply_vendor_rootfs_profile(Path(args.rootfs_dir), args.boot_profile)
+    else:
+        print("  rootfs profile -> unchanged (pass --rootfs-dir to apply userspace service changes)")
 
     print(f"Installed vendor Linux boot files to: {target_root}")
+    print(f"  boot profile -> {args.boot_profile}")
     print(f"  BOOTAA64.EFI -> {target_root / 'EFI' / 'BOOT' / 'BOOTAA64.EFI'}")
     print(f"  vmlinuz      -> {target_root / 'vendor' / 'vmlinuz-5.15.147-7-a733'}")
     print(f"  initrd       -> {target_root / 'vendor' / 'initrd.img-5.15.147-7-a733'}")
