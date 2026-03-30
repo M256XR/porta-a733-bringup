@@ -311,6 +311,9 @@ def build_rootfs_profile_wsl_script(root_var: str, build_var: str, profile: str)
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/porta-sddm-probe.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-sddm-probe.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-sddm-probe.service\"",
+                f"rm -f \"${{{root_var}}}/lib/systemd/system/porta-sddm-probe.service\"",
+                f"rm -f \"${{{root_var}}}/lib/systemd/system/multi-user.target.wants/porta-sddm-probe.service\"",
+                f"rm -f \"${{{root_var}}}/lib/systemd/system/graphical.target.wants/porta-sddm-probe.service\"",
                 f"rm -f \"${{{root_var}}}/etc/sddm.conf.d/10-porta-x11.conf\"",
             ]
         )
@@ -325,6 +328,9 @@ def build_rootfs_profile_wsl_script(root_var: str, build_var: str, profile: str)
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/porta-sddm-probe.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-sddm-probe.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-sddm-probe.service\"",
+                f"rm -f \"${{{root_var}}}/lib/systemd/system/porta-sddm-probe.service\"",
+                f"rm -f \"${{{root_var}}}/lib/systemd/system/multi-user.target.wants/porta-sddm-probe.service\"",
+                f"rm -f \"${{{root_var}}}/lib/systemd/system/graphical.target.wants/porta-sddm-probe.service\"",
                 f"mkdir -p \"${{{root_var}}}/etc/systemd/system/graphical.target.wants\"",
                 f"ln -snf ../porta-graphical-probe.service \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-graphical-probe.service\"",
             ]
@@ -396,6 +402,7 @@ def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
         disable_systemd_unit(rootfs, "porta-graphical-probe.service", "multi-user.target")
         disable_systemd_unit(rootfs, "porta-graphical-probe.service", "graphical.target")
         remove_path(rootfs / "etc" / "systemd" / "system" / "porta-sddm-probe.service")
+        remove_path(rootfs / "lib" / "systemd" / "system" / "porta-sddm-probe.service")
         disable_systemd_unit(rootfs, "porta-sddm-probe.service", "multi-user.target")
         disable_systemd_unit(rootfs, "porta-sddm-probe.service", "graphical.target")
         mask_systemd_unit(rootfs, "sddm.service")
@@ -416,6 +423,7 @@ def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
         disable_systemd_unit(rootfs, "porta-x11-direct.service", "multi-user.target")
         disable_systemd_unit(rootfs, "porta-x11-direct.service", "graphical.target")
         remove_path(rootfs / "etc" / "systemd" / "system" / "porta-sddm-probe.service")
+        remove_path(rootfs / "lib" / "systemd" / "system" / "porta-sddm-probe.service")
         disable_systemd_unit(rootfs, "porta-sddm-probe.service", "multi-user.target")
         disable_systemd_unit(rootfs, "porta-sddm-probe.service", "graphical.target")
         disable_systemd_unit(rootfs, "porta-graphical-probe.service", "multi-user.target")
