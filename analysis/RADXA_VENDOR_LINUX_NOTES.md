@@ -2,11 +2,11 @@
 
 ## Source Artifacts
 
-- Raw image: [`roms/_work/radxa-cubie-a7z_bullseye_kde_b1.output_512.img`](D:\Projects\PortaRe0\software\roms\_work\radxa-cubie-a7z_bullseye_kde_b1.output_512.img)
-- Extracted boot assets: [`roms/_work/radxa_vendor_boot`](D:\Projects\PortaRe0\software\roms\_work\radxa_vendor_boot)
-- Vendor DTB copy: [`roms/_work/radxa_vendor/sun60i-a733-cubie-a7z.dtb`](D:\Projects\PortaRe0\software\roms\_work\radxa_vendor\sun60i-a733-cubie-a7z.dtb)
-- Vendor extlinux: [`roms/_work/radxa_vendor/extlinux.conf`](D:\Projects\PortaRe0\software\roms\_work\radxa_vendor\extlinux.conf)
-- Vendor kernel config: [`roms/_work/radxa_vendor/config-5.15.147-7-a733`](D:\Projects\PortaRe0\software\roms\_work\radxa_vendor\config-5.15.147-7-a733)
+- Raw image: not committed; expected at `D:\Projects\porta-a733-bringup\roms\_work\radxa-cubie-a7z_bullseye_kde_b1.output_512.img`
+- Extracted boot assets: `D:\Projects\porta-a733-bringup\roms\_work\radxa_vendor_boot`
+- Vendor DTB copy: `D:\Projects\porta-a733-bringup\roms\_work\radxa_vendor_boot\sun60i-a733-cubie-a7z.dtb`
+- Vendor extlinux: `D:\Projects\porta-a733-bringup\roms\_work\radxa_vendor_boot\extlinux.conf`
+- Vendor kernel config: `D:\Projects\porta-a733-bringup\roms\_work\radxa_vendor_boot_verify\config-5.15.147-7-a733`
 
 ## Boot Command Line
 
@@ -66,7 +66,7 @@ The vendor DTB is vendor/BSP style rather than mainline/H6 style.
 - Timer:
   - `timer_arch`
 
-This differs substantially from the hand-built mainline-ish DT we currently generate in [`build/install_linux_installer.py`](D:\Projects\PortaRe0\software\build\install_linux_installer.py).
+This differs substantially from the hand-built mainline-ish DT we currently generate in `build/install_linux_installer.py`.
 
 ## Practical Takeaway
 
@@ -76,3 +76,4 @@ Use vendor artifacts in two ways:
 2. Optional separate UEFI boot experiment with vendor kernel/initrd/dtb, if we also prepare a matching vendor rootfs.
 
 Do not assume that copying vendor DT nodes directly into the Ubuntu mainline path will be sufficient. The kernel driver stack differs.
+
