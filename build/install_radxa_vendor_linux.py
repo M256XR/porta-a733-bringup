@@ -325,6 +325,7 @@ def build_rootfs_profile_wsl_script(root_var: str, build_var: str, profile: str)
                 f"ln -snf /dev/null \"${{{root_var}}}/etc/systemd/system/hdmi-toggle-once.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-x11-direct.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-x11-direct.service\"",
+                f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-graphical-probe.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/porta-sddm-probe.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-sddm-probe.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/graphical.target.wants/porta-sddm-probe.service\"",
