@@ -292,6 +292,7 @@ def build_rootfs_profile_wsl_script(root_var: str, build_var: str, profile: str)
         "set -e",
         f"install -d \"${{{root_var}}}/usr/share/sddm/scripts\" \"${{{root_var}}}/usr/bin\" \"${{{root_var}}}/etc/systemd/system\" \"${{{root_var}}}/etc/sddm.conf.d\"",
         f"install -m 0755 \"${{{build_var}}}/vendor_Xsetup.sh\" \"${{{root_var}}}/usr/share/sddm/scripts/Xsetup\"",
+        f"install -m 0755 \"${{{build_var}}}/vendor_xorg_wrap.sh\" \"${{{root_var}}}/usr/bin/porta-xorg-wrap\"",
         f"install -m 0755 \"${{{build_var}}}/vendor_graphical_probe.sh\" \"${{{root_var}}}/usr/bin/porta-graphical-probe\"",
         f"install -m 0644 \"${{{build_var}}}/vendor_graphical_probe.service\" \"${{{root_var}}}/etc/systemd/system/porta-graphical-probe.service\"",
     ]
@@ -385,6 +386,7 @@ def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
         (SCRIPT_DIR / "vendor_Xsetup.sh").read_text(encoding="utf-8"),
         executable=True,
     )
+    copy_executable(SCRIPT_DIR / "vendor_xorg_wrap.sh", rootfs / "usr" / "bin" / "porta-xorg-wrap")
 
     if profile == "xorg-direct":
         copy_executable(SCRIPT_DIR / "vendor_porta-x11-direct.sh", rootfs / "usr" / "bin" / "porta-x11-direct")
