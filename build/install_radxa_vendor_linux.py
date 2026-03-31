@@ -290,9 +290,10 @@ def disable_systemd_unit(rootfs: Path, unit_name: str, target_name: str) -> None
 def build_rootfs_profile_wsl_script(root_var: str, build_var: str, profile: str) -> list[str]:
     script = [
         "set -e",
-        f"install -d \"${{{root_var}}}/usr/share/sddm/scripts\" \"${{{root_var}}}/usr/bin\" \"${{{root_var}}}/etc/systemd/system\" \"${{{root_var}}}/etc/sddm.conf.d\"",
+        f"install -d \"${{{root_var}}}/usr/share/sddm/scripts\" \"${{{root_var}}}/usr/bin\" \"${{{root_var}}}/etc/systemd/system\" \"${{{root_var}}}/etc/systemd/system/sddm.service.d\" \"${{{root_var}}}/etc/sddm.conf.d\"",
         f"install -m 0755 \"${{{build_var}}}/vendor_Xsetup.sh\" \"${{{root_var}}}/usr/share/sddm/scripts/Xsetup\"",
         f"install -m 0755 \"${{{build_var}}}/vendor_xorg_wrap.sh\" \"${{{root_var}}}/usr/bin/porta-xorg-wrap\"",
+        f"install -m 0755 \"${{{build_var}}}/vendor_sddm_wrap.sh\" \"${{{root_var}}}/usr/bin/porta-sddm-wrap\"",
         f"install -m 0755 \"${{{build_var}}}/vendor_graphical_probe.sh\" \"${{{root_var}}}/usr/bin/porta-graphical-probe\"",
         f"install -m 0644 \"${{{build_var}}}/vendor_graphical_probe.service\" \"${{{root_var}}}/etc/systemd/system/porta-graphical-probe.service\"",
     ]
@@ -316,12 +317,14 @@ def build_rootfs_profile_wsl_script(root_var: str, build_var: str, profile: str)
                 f"rm -f \"${{{root_var}}}/lib/systemd/system/multi-user.target.wants/porta-sddm-probe.service\"",
                 f"rm -f \"${{{root_var}}}/lib/systemd/system/graphical.target.wants/porta-sddm-probe.service\"",
                 f"rm -f \"${{{root_var}}}/etc/sddm.conf.d/10-porta-x11.conf\"",
+                f"rm -rf \"${{{root_var}}}/etc/systemd/system/sddm.service.d\"",
             ]
         )
     else:
         script.extend(
             [
                 f"install -m 0644 \"${{{build_var}}}/vendor_sddm_x11.conf\" \"${{{root_var}}}/etc/sddm.conf.d/10-porta-x11.conf\"",
+                f"install -m 0644 \"${{{build_var}}}/vendor_sddm_override.conf\" \"${{{root_var}}}/etc/systemd/system/sddm.service.d/10-porta-wrap.conf\"",
                 f"[ \"$(readlink \"${{{root_var}}}/etc/systemd/system/sddm.service\" 2>/dev/null || true)\" = /dev/null ] && rm -f \"${{{root_var}}}/etc/systemd/system/sddm.service\" || true",
                 f"ln -snf /dev/null \"${{{root_var}}}/etc/systemd/system/hdmi-toggle-once.service\"",
                 f"rm -f \"${{{root_var}}}/etc/systemd/system/multi-user.target.wants/porta-x11-direct.service\"",
@@ -387,6 +390,7 @@ def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
         executable=True,
     )
     copy_executable(SCRIPT_DIR / "vendor_xorg_wrap.sh", rootfs / "usr" / "bin" / "porta-xorg-wrap")
+    copy_executable(SCRIPT_DIR / "vendor_sddm_wrap.sh", rootfs / "usr" / "bin" / "porta-sddm-wrap")
 
     if profile == "xorg-direct":
         copy_executable(SCRIPT_DIR / "vendor_porta-x11-direct.sh", rootfs / "usr" / "bin" / "porta-x11-direct")
@@ -411,6 +415,7 @@ def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
         mask_systemd_unit(rootfs, "sddm.service")
         mask_systemd_unit(rootfs, "hdmi-toggle-once.service")
         remove_path(rootfs / "etc" / "sddm.conf.d" / "10-porta-x11.conf")
+        remove_path(rootfs / "etc" / "systemd" / "system" / "sddm.service.d")
     else:
         copy_executable(SCRIPT_DIR / "vendor_graphical_probe.sh", rootfs / "usr" / "bin" / "porta-graphical-probe")
         write_text_file(
@@ -420,6 +425,10 @@ def apply_vendor_rootfs_profile(rootfs: Path, profile: str) -> None:
         write_text_file(
             rootfs / "etc" / "sddm.conf.d" / "10-porta-x11.conf",
             (SCRIPT_DIR / "vendor_sddm_x11.conf").read_text(encoding="utf-8"),
+        )
+        write_text_file(
+            rootfs / "etc" / "systemd" / "system" / "sddm.service.d" / "10-porta-wrap.conf",
+            (SCRIPT_DIR / "vendor_sddm_override.conf").read_text(encoding="utf-8"),
         )
         unmask_systemd_unit(rootfs, "sddm.service")
         mask_systemd_unit(rootfs, "hdmi-toggle-once.service")
