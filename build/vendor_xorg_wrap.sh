@@ -11,13 +11,13 @@ xwlog() {
 xwlog "start args=$*"
 
 if [ -x /usr/lib/xorg/Xorg ]; then
-  xwlog "exec /usr/lib/xorg/Xorg"
-  exec /usr/lib/xorg/Xorg "$@"
+  xwlog "exec /usr/lib/xorg/Xorg -logverbose 7 -verbose 7"
+  exec /usr/lib/xorg/Xorg "$@" -logverbose 7 -verbose 7 >>/dev/ttyAS0 2>&1
 fi
 
 if [ -x /usr/bin/Xorg ]; then
-  xwlog "exec /usr/bin/Xorg"
-  exec /usr/bin/Xorg "$@"
+  xwlog "exec /usr/bin/Xorg -logverbose 7 -verbose 7"
+  exec /usr/bin/Xorg "$@" -logverbose 7 -verbose 7 >>/dev/ttyAS0 2>&1
 fi
 
 xwlog "missing-xorg-binary"
