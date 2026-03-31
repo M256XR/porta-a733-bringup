@@ -23,6 +23,26 @@ show_file() {
 }
 
 swlog "start args=$*"
+swlog "env XDG_VTNR=${XDG_VTNR:-} XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-} DISPLAY=${DISPLAY:-}"
+
+for p in /dev/tty1 /dev/tty7 /sys/class/tty/tty1 /sys/class/tty/tty7; do
+  if [ -e "$p" ]; then
+    swlog "exists $p"
+  else
+    swlog "missing $p"
+  fi
+done
+
+if command -v loginctl >/dev/null 2>&1; then
+  swlog "loginctl-seats-begin"
+  loginctl list-seats 2>/dev/null | while IFS= read -r line; do
+    swlog "seat $line"
+  done
+  loginctl seat-status seat0 2>/dev/null | while IFS= read -r line; do
+    swlog "seat0 $line"
+  done
+  swlog "loginctl-seats-end"
+fi
 
 for p in \
   /etc/sddm.conf \

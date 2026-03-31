@@ -18,6 +18,17 @@ ps -ef 2>/dev/null | grep -E 'sddm|Xorg|Xwayland|kwin|plasmashell' | grep -v gre
 done
 vlog "ps-end"
 
+if command -v loginctl >/dev/null 2>&1; then
+  vlog "loginctl-begin"
+  loginctl list-seats 2>/dev/null | while IFS= read -r line; do
+    vlog "seat $line"
+  done
+  loginctl seat-status seat0 2>/dev/null | while IFS= read -r line; do
+    vlog "seat0 $line"
+  done
+  vlog "loginctl-end"
+fi
+
 vlog "x11-socket-begin"
 for p in /tmp/.X11-unix /run/sddm /var/run/sddm /var/log/sddm.log; do
   if [ -e "$p" ]; then
