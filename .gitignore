@@ -1,8 +1,15 @@
 build/__pycache__/
+build/*.EFI
+build/tmp_*.S
+build/tmp_*.o
 *.pyc
 *.tmp
 *.bak
 log/*.log
+log/*.log.summary.txt
+log/*.log.summary.json
+log/*.lnk
+log/archive/
 roms/**/*.img
 roms/**/*.iso
 roms/**/*.xz
@@ -10,4 +17,3 @@ roms/_work/mntinspect/
 roms/_work/radxa_debian_extract/
 roms/_work/radxa_vendor/
 roms/_work/tmp_vendor_test/
-

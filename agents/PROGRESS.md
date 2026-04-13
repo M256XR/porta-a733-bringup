@@ -6,12 +6,14 @@
 ## 現在の作業箇所
 - **筐体・PCB完成待ちのため QMK/TinyUSB は保留**
 - **EDK2 移植（Windows ARM）を優先的に進行中**
-- **現在地**: DEBUG 版で `SMHC0 -> GPT -> FAT -> fs0: -> Shell` まで安定動作確認済み。現行 SD の DEBUG イメージは `FD_SHA256_16=d7c7762bb8b98fd8`
-- **最新ビルド成果物**: `build/A733.fd` は `FD_SHA256_16=d7c7762bb8b98fd8`、`build/BootProbe.efi` と `build/Shell.efi` を出力済み
-- **RELEASE版の状況**: `AllocatePoolPages: failed to allocate 719611 pages` の後に `Synchronous Exception at 0xAFAFAFAFAFAFAFAF` で別系統クラッシュ
-- **次のタスク**: 最新 DEBUG 版で再起動し、`startup.nsh` / Boot Manager の両方について `TESTA7Z.EFI` / `BOOTAA64.EFI` の `LoadImage` / `StartImage` 結果ログを回収
+- **現在地**: bootmgfw.efi が LoadImage/StartImage 成功 → SHA-256計算中に Synchronous Exception (EC=0x00) でクラッシュ。原因はSD DMAドライバのキャッシュ不整合（CMD18マルチブロックリードのpost-DMA D-cacheインバリデーション欠落）。修正済みFDをSD書き込み完了、実機テスト待ち。
+- **最新ビルド成果物**: build/A733.fd は FD_SHA256_16=5c048df49dee17d6, BUILD_GIT=012e8a4-dirty
+- **進捗**: DMA cache coherency fix + 例外ハンドラ診断強化（INSN@ELR, CPACR_EL1, SCTLR_EL1, ID_AA64ISAR0_EL1ダンプ）
+- **直近の詰まりポイント**: bootmgfw.efi がSHA-256ハッシュ計算中にクラッシュ → DMAリード後のD-cacheに古いデータが残り、CPU実行時にundefined instructionとなる → SunxiSmhcDxeのpost-DMAキャッシュインバリデーションをCMD17のみからALL readコマンドに拡大して修正
+- **次のタスク**: 修正FDで実機起動 → bootmgfw.efiがSHA-256チェックを通過するか確認 → BCD アクセスまで進んだら Windows インストールへ
+- **注意**: FVMAIN 100%Full（圧縮後 34% なので動作は問題なし。追加ドライバが必要な場合は FV サイズ拡張か BootProbe.inf 削除を検討）
 - **方針確定**: PCIe（M.2 SSD）は実機PCB完成まで保留 → SD カードへの Windows インストールを先行
-- 参照: `specs/windows_arm.md`（ロードマップ・参考リポジトリ一覧）、`specs/edk2_porting.md`（EDK2構成詳細）
+- 参照: specs/windows_arm.md、analysis/UEFI_REVERSE_ENGINEERING_NOTES.md、agents/UEFI_REFERENCE_MAP.md
 
 ---
 
@@ -65,6 +67,26 @@
 ---
 
 ## 直近の決定事項ログ
+
+### 2026-04-06（session11）
+- **DMA cache coherency バグ発見・修正**:
+  - bootmgfw.efi が SHA-256 integrity check 中に Synchronous Exception (EC=0x00, ELR=0x23CCE6AB4) でクラッシュ
+  - ESR EC=0x00 = "Unknown reason (AArch64)" だが、ELRのファイルオフセットにある命令は `CBZ X28, #+12` (0xB400007C) で完全に valid
+  - **根本原因**: `SunxiSmhcDxe.c` の post-DMA D-cache invalidation が CMD17（single block read）のみに適用されていた。CMD18（multi-block read）でDMA完了後、CPU D-cache にスペキュラティブプリフェッチで読まれた古いデータが残り、bootmgfw.efi の .text セクションが壊れた状態で実行される
+  - **修正**: `WriteBackInvalidateDataCacheRange(Packet->InDataBuffer, DataSize)` を全 read コマンドに適用（CMD17限定条件を除去）。CMD17ループ内のper-block DMA後にも同様のインバリデーション追加
+- **例外ハンドラ診断強化** (`DefaultExceptionHandler.c`):
+  - ESR decode 直後に以下をダンプする診断ブロックを追加:
+    - `INSN@ELR`: ELR アドレスから読んだ実際の命令ワード（D-cache内容 vs ファイル内容の比較用）
+    - `CPACR_EL1` (FPEN フィールド付き)
+    - `SCTLR_EL1`
+    - `ID_AA64ISAR0_EL1` (AES/SHA1/SHA2/CRC32/SHA3/SM3/SM4 各フィールドをデコード表示)
+- **ビルド・SD書き込み完了**: FD_SHA256_16=5c048df49dee17d6, BUILD_GIT=012e8a4-dirty
+  - SD verify SHA256 MATCH 確認済み
+- **PE/COFF 解析結果** (bootmgfw.efi):
+  - ImageBase=0x10000000, SectionAlignment=0x1000, EntryPoint RVA=0x3A130
+  - RVA 0x3BAB4 (crash site): `CBZ X28, #+12` — valid instruction, confirming memory corruption not code issue
+  - V0-V15 に SHA-256 K constants (0x428A2F98...) が入っていた = crash は SHA-256 crypto 実行中
+- **次のアクション**: 実機再起動 → bootmgfw.efi が SHA-256 チェックを通過するか確認
 
 ### 2026-03-24（session10）
 - **外部 EFI 切り分け用アプリ追加**: `Platform/Allwinner/A733Pkg/Application/BootProbe/BootProbe.inf`

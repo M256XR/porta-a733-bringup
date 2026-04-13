@@ -1,5 +1,8 @@
 @echo -off
-if exist fs1:\EFI\BOOT\BOOTAA64.EFI then
-  fs1:\EFI\BOOT\BOOTAA64.EFI
+if exist fs1:\EFI\Microsoft\Boot\bootmgfw.efi then
+  fs1:\EFI\Microsoft\Boot\bootmgfw.efi
 endif
-echo Windows installer BOOTAA64.EFI not found on fs1:.
+if exist fs1:\EFI\BOOT\BOOTAA64.EFI then
+  echo BOOTAA64.EFI exists on fs1: but this script is not auto-launching it
+endif
+echo Windows installer bootmgfw.efi not found on fs1:.

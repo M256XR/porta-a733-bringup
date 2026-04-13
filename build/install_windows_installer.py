@@ -83,33 +83,63 @@ def copy_file(src: Path, dst: Path) -> None:
     shutil.copy2(src, dst)
 
 
-def install_windows_installer(iso_root: Path, target_root: Path, boot_file: str) -> None:
+def install_windows_installer(iso_root: Path, target_root: Path, boot_file: str, copy_bootaa64: bool) -> None:
     bootaa64_src = iso_root / boot_file
 
     required = [
-        bootaa64_src,
         iso_root / "EFI" / "Microsoft" / "Boot" / "BCD",
         iso_root / "boot" / "boot.sdi",
         iso_root / "sources" / "boot.wim",
     ]
+    if copy_bootaa64:
+        required.insert(0, bootaa64_src)
+
     for path in required:
         if not path.exists():
             fail(f"Required installer file not found: {path}")
 
     copy_tree(iso_root / "EFI" / "Microsoft" / "Boot", target_root / "EFI" / "Microsoft" / "Boot")
-    copy_file(bootaa64_src, target_root / "EFI" / "BOOT" / "BOOTAA64.EFI")
+    if copy_bootaa64:
+        copy_file(bootaa64_src, target_root / "EFI" / "BOOT" / "BOOTAA64.EFI")
     copy_file(iso_root / "boot" / "boot.sdi", target_root / "boot" / "boot.sdi")
     copy_file(iso_root / "sources" / "boot.wim", target_root / "sources" / "boot.wim")
 
 
-def write_startup_script(target_root: Path) -> None:
+def write_startup_script(target_root: Path, auto_launch_bootaa64: bool) -> None:
     script = (
         "@echo -off\r\n"
-        "if exist fs0:\\EFI\\BOOT\\BOOTAA64.EFI then\r\n"
-        "  fs0:\\EFI\\BOOT\\BOOTAA64.EFI\r\n"
+        "map -r\r\n"
+        "if exist \\EFI\\Microsoft\\Boot\\bootmgfw.efi then\r\n"
+        "  \\EFI\\Microsoft\\Boot\\bootmgfw.efi\r\n"
         "endif\r\n"
-        "echo Windows installer BOOTAA64.EFI not found on fs0:.\r\n"
     )
+    if auto_launch_bootaa64:
+        script += (
+            "if exist \\EFI\\BOOT\\BOOTAA64.EFI then\r\n"
+            "  \\EFI\\BOOT\\BOOTAA64.EFI\r\n"
+            "endif\r\n"
+        )
+    else:
+        script += (
+            "if exist \\EFI\\BOOT\\BOOTAA64.EFI then\r\n"
+            "  echo BOOTAA64.EFI exists on the current volume but startup.nsh is not auto-launching it\r\n"
+            "endif\r\n"
+        )
+
+    for fs_index in range(10):
+        script += (
+            f"if exist fs{fs_index}:\\EFI\\Microsoft\\Boot\\bootmgfw.efi then\r\n"
+            f"  fs{fs_index}:\\EFI\\Microsoft\\Boot\\bootmgfw.efi\r\n"
+            "endif\r\n"
+        )
+    if auto_launch_bootaa64:
+        for fs_index in range(10):
+            script += (
+                f"if exist fs{fs_index}:\\EFI\\BOOT\\BOOTAA64.EFI then\r\n"
+                f"  fs{fs_index}:\\EFI\\BOOT\\BOOTAA64.EFI\r\n"
+                "endif\r\n"
+            )
+    script += "echo Windows installer loader not found on current volume or fs0:fs9:.\r\n"
     (target_root / "startup.nsh").write_text(script, encoding="ascii", newline="")
 
 
@@ -128,6 +158,19 @@ def parse_args() -> argparse.Namespace:
         default=r"EFI\BOOT\BOOTAA64.EFI",
         help=r"EFI file inside the mounted ISO to copy as EFI\BOOT\BOOTAA64.EFI. Default: EFI\BOOT\BOOTAA64.EFI",
     )
+    parser.add_argument(
+        "--skip-bootaa64",
+        action="store_true",
+        help=(
+            r"Do not install EFI\BOOT\BOOTAA64.EFI. Useful for Shell-driven bring-up, "
+            r"where the firmware would otherwise auto-run the removable-media path before startup.nsh."
+        ),
+    )
+    parser.add_argument(
+        "--with-bootaa64-fallback",
+        action="store_true",
+        help=r"Let startup.nsh auto-launch EFI\BOOT\BOOTAA64.EFI after bootmgfw. Default keeps BOOTAA64 present but does not invoke it from startup.nsh.",
+    )
     return parser.parse_args()
 
 
@@ -136,15 +179,20 @@ def main() -> None:
     iso_root = normalize_existing_dir(args.iso_root)
 
     target_root = normalize_existing_dir(args.target) if args.target else create_disk3_installer_partition(args.installer_partition_mb)
-    install_windows_installer(iso_root, target_root, args.boot_file)
-    write_startup_script(target_root)
+    install_windows_installer(iso_root, target_root, args.boot_file, copy_bootaa64=not args.skip_bootaa64)
+    write_startup_script(target_root, auto_launch_bootaa64=args.with_bootaa64_fallback)
 
     print(f"Installed Windows installer files to: {target_root}")
-    print(f"  BOOTAA64.EFI <- {args.boot_file}")
-    print(f"  BOOTAA64.EFI -> {target_root / 'EFI' / 'BOOT' / 'BOOTAA64.EFI'}")
+    if args.skip_bootaa64:
+        print("  BOOTAA64.EFI skipped (--skip-bootaa64)")
+    else:
+        print(f"  BOOTAA64.EFI <- {args.boot_file}")
+        print(f"  BOOTAA64.EFI -> {target_root / 'EFI' / 'BOOT' / 'BOOTAA64.EFI'}")
     print(f"  boot.sdi     -> {target_root / 'boot' / 'boot.sdi'}")
     print(f"  boot.wim     -> {target_root / 'sources' / 'boot.wim'}")
     print(f"  startup.nsh  -> {target_root / 'startup.nsh'}")
+    if not args.skip_bootaa64:
+        print("  Note: firmware may still auto-run EFI\\BOOT\\BOOTAA64.EFI before Shell. Use --skip-bootaa64 when debugging the 0x102000 AllocateAddress path.")
 
 
 if __name__ == "__main__":

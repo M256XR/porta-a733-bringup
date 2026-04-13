@@ -1,0 +1,306 @@
+A733 project handoff
+Updated: 2026-04-08
+
+1. Purpose
+
+This file is the current handoff summary for the A733 bring-up work.
+It is meant to answer:
+
+- Which repo is authoritative
+- What is already proven
+- What is currently broken
+- What should be done next on real hardware
+
+
+2. Source of truth
+
+There are 4 layers in play. Do not mix them.
+
+- Current firmware repo:
+  D:\Projects\porta-a733-uefi
+  This is the source of truth for firmware/platform code.
+
+- Current bring-up repo:
+  D:\Projects\porta-a733-bringup
+  This is the source of truth for staging scripts, log analysis, and boot-loader experiments.
+
+- WSL edk2 tree:
+  \\wsl$\Ubuntu-22.04\home\linux\edk2
+  This contains temporary diagnosis patches added directly to edk2 DXE core.
+  Important: this is not tracked by the firmware repo git history.
+
+- Legacy workspace:
+  D:\Projects\PortaRe0\software
+  This is archaeology only.
+  It contains old logs, old scripts, and old generated artifacts.
+  Do not treat it as the main codebase.
+
+
+3. What is already proven
+
+3.1 UEFI can hand off to vendor Linux
+
+There is a confirmed successful run of:
+
+- boot0
+- BL31
+- custom UEFI
+- GRUB
+- vendor Linux
+- vendor HDMI path
+- direct Xorg on HDMI
+
+Evidence:
+
+- D:\Projects\porta-a733-bringup\log\teraterm_2026-03-30_213931.log
+- D:\Projects\porta-a733-bringup\analysis\VENDOR_LINUX_VIA_UEFI_BASELINE_20260408.md
+
+Practical meaning:
+
+- The firmware is not "dead".
+- UEFI -> OS handoff works at least for one non-Windows path.
+- Vendor HDMI can be reached through UEFI if the vendor kernel/rootfs path is used.
+
+
+3.2 Windows once reached Boot Manager / BCD stage
+
+There is a recovered log where Windows got much farther than the latest failing run.
+
+Known good-ish log:
+
+- D:\Projects\PortaRe0\software\log\teraterm3.log
+
+What it proves:
+
+- Windows Boot Manager screen appeared
+- File: \EFI\Microsoft\Boot\BCD
+- Status: 0xc000000d
+
+Practical meaning:
+
+- Windows boot is not fundamentally impossible on this platform.
+- At least one earlier setup reached BCD processing.
+
+
+3.3 Latest Windows run is worse than the older one
+
+Current latest log:
+
+- D:\Projects\PortaRe0\software\log\teraterm.log
+
+What it shows:
+
+- UEFI starts
+- boot path falls back to shell
+- "No mapping" appears repeatedly
+- it does not reach the earlier BCD stage
+
+Practical meaning:
+
+- Current Windows state is a regression relative to the older Apr 2 run.
+
+
+4. Main problem right now
+
+The Windows investigation is polluted by two different classes of changes:
+
+- firmware-side changes in UEFI / edk2
+- patched Windows loaders on the live media
+
+This means a bad run cannot be interpreted as "firmware regression only".
+
+This is the single biggest project-management problem right now.
+
+
+5. What is known about the Windows loader state
+
+Current mounted Windows media was inspected and classified.
+
+Summary:
+
+- BOOTAA64.EFI and bootmgfw.efi on the live media are patched
+- BOOTAA64.PATCH.txt does not match the actual EFI hash
+- startup.nsh was still capable of retrying into multiple loader paths
+- the live media contained a mixed loader variant, not one clean named recipe
+
+Reference:
+
+- D:\Projects\porta-a733-bringup\analysis\LIVE_MEDIA_LOADER_STATE_20260408.md
+- D:\Projects\porta-a733-bringup\analysis\CODEX_TRANSCRIPT_FINDINGS_20260408.md
+- D:\Projects\porta-a733-bringup\analysis\CODEX_PATCH_TIMELINE_FROM_LOG.md
+
+Practical meaning:
+
+- Do not trust any current Windows boot result unless the media state is snapshotted first.
+- Do not assume "No mapping" is purely a firmware problem.
+
+
+6. Current technical judgment
+
+Long-term correct direction:
+
+- Fix UEFI / firmware behavior
+
+Short-term useful tool:
+
+- Patch Windows EFI only for diagnosis
+
+Why:
+
+- UEFI fixes are the maintainable solution
+- loader patches are useful probes, but they are fragile and easy to mix up
+- the current confusion came largely from firmware changes and loader patches being mixed together
+
+
+7. Current recommended investigation rules
+
+Rule 1:
+Treat D:\Projects\porta-a733-uefi as the firmware source of truth.
+
+Rule 2:
+Treat D:\Projects\porta-a733-bringup as the bring-up source of truth.
+
+Rule 3:
+Treat D:\Projects\PortaRe0\software only as an evidence archive.
+
+Rule 4:
+Before interpreting any Windows run, snapshot the media state first.
+
+Rule 5:
+Keep "clean UEFI run" and "patched loader experiment" separate.
+
+Rule 6:
+Do not chainload the Windows loader twice in one boot if you want clean results.
+
+
+8. Tera Term log handling
+
+Current preferred workflow:
+
+- Tera Term writes to teraterm.log while running
+- after the run, rename it to:
+  teraterm_YYYY-MM-DD_HHMMSS.log
+- leave creation of the next teraterm.log to Tera Term itself
+
+Helper script:
+
+- D:\Projects\porta-a733-bringup\agents\teraterm\finalize_teraterm_log.cmd
+
+What it does:
+
+- renames teraterm.log in place
+- creates sidecar summaries:
+  .summary.txt
+  .summary.json
+- does not recreate teraterm.log
+- does not pause at the end
+
+
+9. New helper tooling added
+
+Log / handoff tools:
+
+- D:\Projects\porta-a733-bringup\build\summarize_teraterm_boot.py
+  Summarizes Tera Term logs into boot categories such as:
+  vendor_linux_via_uefi
+  windows_bootmgr
+  uefi_shell_only
+  boot_exception
+
+- D:\Projects\porta-a733-bringup\analysis\TERATERM_LOG_INVENTORY_20260408.md
+  Inventory of currently known logs.
+
+Windows media tools:
+
+- D:\Projects\porta-a733-bringup\build\classify_bootaa64_state.py
+- D:\Projects\porta-a733-bringup\build\snapshot_windows_media.ps1
+- D:\Projects\porta-a733-bringup\build\stage_windows_loader_variant.py
+- D:\Projects\porta-a733-bringup\build\prepare_windows_debug_run.ps1
+
+These exist to make the next hardware runs reproducible.
+
+
+10. Firmware-side diagnosis changes already made
+
+Important note:
+
+- Some diagnosis changes live in the WSL edk2 tree, not in the firmware repo itself.
+
+WSL edk2 diagnosis changes include:
+
+- stronger AllocatePages / AllocateAddress logging
+- memory-map dump control
+- image start / loader watch improvements
+- extra DXE heartbeat and trace output
+
+Practical meaning:
+
+- If a run depends on those logs, it depends on the WSL edk2 build environment too.
+
+
+11. Best current baselines
+
+Use these as the reference set:
+
+- Vendor Linux success baseline:
+  D:\Projects\porta-a733-bringup\log\teraterm_2026-03-30_213931.log
+
+- Windows farther-progress baseline:
+  D:\Projects\PortaRe0\software\log\teraterm3.log
+
+- Windows latest failing baseline:
+  D:\Projects\PortaRe0\software\log\teraterm.log
+
+
+12. What is still unknown
+
+- Whether the latest Windows failure is mainly:
+  firmware regression
+  patched loader side effect
+  boot path / double-launch contamination
+  or a combination of all three
+
+- Exact clean repro for the older Apr 2 Windows path
+
+- Whether the Ubuntu installer path really reached UART installer UI in a log we still have
+
+
+13. Recommended next hardware steps
+
+When hardware access is available again, do this in order:
+
+1. Finalize and keep the current Tera Term log.
+
+2. For Windows testing, snapshot the mounted media before boot:
+   - BOOTAA64.EFI hash
+   - bootmgfw.efi hash
+   - BOOTAA64.PATCH.txt contents
+   - startup.nsh contents
+
+3. Run only one intended boot path.
+   Avoid a boot that auto-runs BOOTAA64.EFI and then re-runs bootmgfw.efi from shell/startup.nsh.
+
+4. Decide which of these two you are doing before the run:
+   - clean media / firmware-focused run
+   - patched loader / diagnosis run
+
+5. If the goal is stability or long-term boot, move fixes back into UEFI whenever possible.
+
+
+14. Bottom line
+
+The project is not blocked by "UEFI does nothing".
+The project is blocked by state contamination on the Windows side.
+
+What is already true:
+
+- UEFI can boot vendor Linux through to HDMI/Xorg
+- Windows once reached BCD
+
+What must be improved:
+
+- clean run discipline
+- media state tracking
+- clear separation between firmware fixes and loader patches
+
+If this separation is kept, the next debugging cycle should be much shorter than the last one.

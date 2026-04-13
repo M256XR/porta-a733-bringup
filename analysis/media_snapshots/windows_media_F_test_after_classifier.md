@@ -1,0 +1,168 @@
+﻿# Windows Media Snapshot
+
+- root: F:
+- captured_at: 2026-04-08 16:01:53
+
+## EFI\BOOT\BOOTAA64.EFI
+
+- status: present
+- full_path: F:\EFI\BOOT\BOOTAA64.EFI
+- length: 3030944
+- last_write_time: 2026-04-06 23:34:38
+- sha256: 5ADF7FF7B06B344113BCF637B14612DDAE09C4528B5E2D7B7109D71CB9BB5DD4
+
+## EFI\Microsoft\Boot\bootmgfw.efi
+
+- status: present
+- full_path: F:\EFI\Microsoft\Boot\bootmgfw.efi
+- length: 3030944
+- last_write_time: 2026-04-06 23:35:02
+- sha256: 5ADF7FF7B06B344113BCF637B14612DDAE09C4528B5E2D7B7109D71CB9BB5DD4
+
+## EFI\BOOT\BOOTAA64.PATCH.txt
+
+- status: present
+- full_path: F:\EFI\BOOT\BOOTAA64.PATCH.txt
+- length: 355
+- last_write_time: 2026-04-06 19:53:32
+- sha256: 33DB0D85EBA86165386A29D4103753FC2D59C2B79DDF2671EA8ABEEA07252CE1
+- preview:
+
+~~~text
+BOOTAA64_PATCH=nop_bootmgr_altpath_reporting_helper1_nop_bootmgr_altpath_screen_call_nop_bootmgr_altpath_cleanup_call_nop_bootmgr_altpath_global_cleanup_call_break_before_bootmgr_altpath_x28_cleanup_branch
+BOOTAA64_SHA256=ECC4895294796478D3298E35AFDE3751DB48F96F378B1A7E158648B24AF47165
+PATCH_VAS=0x1003BA54,0x1003BA58,0x1003BA64,0x1003BAB0,0x1003BAB4
+~~~
+
+## startup.nsh
+
+- status: present
+- full_path: F:\startup.nsh
+- length: 1965
+- last_write_time: 2026-04-06 01:17:52
+- sha256: 5624FE7EB1D5D574D15EE5AF572749367136B34A599020DA9DE54B04D2713C46
+- preview:
+
+~~~text
+@echo -off
+map -r
+if exist \EFI\Microsoft\Boot\bootmgfw.efi then
+  \EFI\Microsoft\Boot\bootmgfw.efi
+endif
+if exist \EFI\BOOT\BOOTAA64.EFI then
+  \EFI\BOOT\BOOTAA64.EFI
+endif
+if exist fs0:\EFI\Microsoft\Boot\bootmgfw.efi then
+  fs0:\EFI\Microsoft\Boot\bootmgfw.efi
+endif
+if exist fs1:\EFI\Microsoft\Boot\bootmgfw.efi then
+  fs1:\EFI\Microsoft\Boot\bootmgfw.efi
+endif
+if exist fs2:\EFI\Microsoft\Boot\bootmgfw.efi then
+  fs2:\EFI\Microsoft\Boot\bootmgfw.efi
+endif
+if exist fs3:\EFI\Microsoft\Boot\bootmgfw.efi then
+  fs3:\EFI\Microsoft\Boot\bootmgfw.efi
+endif
+if exist fs4:\EFI\Microsoft\Boot\bootmgfw.efi then
+  fs4:\EFI\Microsoft\Boot\bootmgfw.efi
+endif
+if exist fs5:\EFI\Microsoft\Boot\bootmgfw.efi then
+  fs5:\EFI\Microsoft\Boot\bootmgfw.efi
+endif
+if exist fs6:\EFI\Microsoft\Boot\bootmgfw.efi then
+  fs6:\EFI\Microsoft\Boot\bootmgfw.efi
+endif
+if exist fs7:\EFI\Microsoft\Boot\bootmgfw.efi then
+  fs7:\EFI\Microsoft\Boot\bootmgfw.efi
+endif
+if exist fs8:\EFI\Microsoft\Boot\bootmgfw.efi then
+  fs8:\EFI\Microsoft\Boot\bootmgfw.efi
+endif
+if exist fs9:\EFI\Microsoft\Boot\bootmgfw.efi then
+  fs9:\EFI\Microsoft\Boot\bootmgfw.efi
+endif
+if exist fs0:\EFI\BOOT\BOOTAA64.EFI then
+  fs0:\EFI\BOOT\BOOTAA64.EFI
+~~~
+
+## EFI\Microsoft\Boot\BCD
+
+- status: present
+- full_path: F:\EFI\Microsoft\Boot\BCD
+- length: 20480
+- last_write_time: 2026-04-06 22:23:06
+- sha256: F3E839DAE46488410579BEDE8982592F93423CE26044DE0DB170093E5E3E316C
+
+## BOOTAA64 Classification
+
+~~~text
+# BOOTAA64 State
+
+- target: F:\EFI\BOOT\BOOTAA64.EFI
+- sha256: 5ADF7FF7B06B344113BCF637B14612DDAE09C4528B5E2D7B7109D71CB9BB5DD4
+- length: 3030944
+- original: D:\Projects\porta-a733-bringup\build\BOOTAA64.original.EFI
+- original_sha256: 3DCA6D137E7B61E231969D693D9FB86E590DEA066931E686D40221F72D74AC8E
+- matches_original: no
+- fixed: D:\Projects\porta-a733-bringup\build\BOOTAA64.fixed.EFI
+- fixed_sha256: 315FBD1FDF8358CB9C6D5A3EE0213C2FB6FAA470C22192F638E08836A96C0E16
+- matches_fixed: no
+- marker: F:\EFI\BOOT\BOOTAA64.PATCH.txt
+- marker_patch: nop_bootmgr_altpath_reporting_helper1_nop_bootmgr_altpath_screen_call_nop_bootmgr_altpath_cleanup_call_nop_bootmgr_altpath_global_cleanup_call_break_before_bootmgr_altpath_x28_cleanup_branch
+- marker_claimed_hash: ECC4895294796478D3298E35AFDE3751DB48F96F378B1A7E158648B24AF47165
+- marker_hash_matches_target: no
+- marker_patch_vas: 0x1003BA54,0x1003BA58,0x1003BA64,0x1003BAB0,0x1003BAB4
+
+## Diff vs Original
+- diff_runs: 14
+- file 0x03A3EC-0x03A3EF len=4 va=0x1003AFEC sec=.text
+- file 0x03A7EC-0x03A7EF len=4 va=0x1003B3EC sec=.text
+- file 0x03A8B0-0x03A8B3 len=4 va=0x1003B4B0 sec=.text
+- file 0x03AD74-0x03AD77 len=4 va=0x1003B974 sec=.text
+- file 0x03AD98-0x03AD9B len=4 va=0x1003B998 sec=.text
+- file 0x03AE54-0x03AE5B len=8 va=0x1003BA54 sec=.text
+- file 0x03AE64-0x03AE67 len=4 va=0x1003BA64 sec=.text
+- file 0x03AEB0-0x03AEB7 len=8 va=0x1003BAB0 sec=.text
+- file 0x03AEEC-0x03AEEF len=4 va=0x1003BAEC sec=.text
+- file 0x1AEE2D-0x1AEE2F len=3 va=0x101AFA2D sec=.text
+- file 0x1B4B2C-0x1B4B2F len=4 va=0x101B572C sec=.text
+- file 0x1B5BF4-0x1B5BF7 len=4 va=0x101B67F4 sec=.text
+- file 0x1CB829-0x1CB82B len=3 va=0x101CC429 sec=.text
+- file 0x28D058-0x28D05A len=3 va=0x1028DC58 sec=.text
+
+## Diff vs Fixed
+- diff_runs: 3
+- file 0x03AD74-0x03AD77 len=4 va=0x1003B974 sec=.text
+- file 0x03AD98-0x03AD9B len=4 va=0x1003B998 sec=.text
+- file 0x03AEEC-0x03AEEF len=4 va=0x1003BAEC sec=.text
+
+## Known Patch Sites Changed
+- count: 14
+- 0x1003AFEC=1f2003d5
+- 0x1003B3EC=0b000014
+- 0x1003B4B0=0a000014
+- 0x1003BA54=1f2003d5
+- 0x1003BA58=1f2003d5
+- 0x1003BA64=1f2003d5
+- 0x1003BAB0=1f2003d5
+- 0x1003BAB4=1f2003d5
+- 0x1003BAEC=08000014
+- 0x101AFA2C=f5031f2a
+- 0x101B572C=e0031f2a
+- 0x101B67F4=e0031f2a
+- 0x101CC428=e0031f2a
+- 0x1028DC58=1f2003d5
+
+## Largest Matching Recipe Subsets
+- 5 sites: skip_setvar_all_callers_nop_vbar_restore_skip_null_callback_101cc428_bypass_configaccesspolicy_error_path
+- 4 sites: skip_setvar_all_callers_nop_vbar_restore_skip_null_callback_101cc428
+- 2 sites: skip_setvar_all_callers
+- 1 sites: skip_setvar_gate_caller
+~~~
+
+## Summary
+
+- BOOTAA64.EFI and bootmgfw.efi hashes match
+- BOOTAA64.PATCH.txt is present
+

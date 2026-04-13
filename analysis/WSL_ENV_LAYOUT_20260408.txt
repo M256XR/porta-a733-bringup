@@ -1,0 +1,113 @@
+WSL environment layout
+Updated: 2026-04-08
+
+1. Short answer
+
+Mostly yes: the WSL side is primarily the build and diagnosis environment.
+
+But not "build only".
+
+Reason:
+
+- the upstream edk2 tree inside WSL contains temporary diagnosis source edits
+- the A733 platform package itself is not copied into WSL; it is symlinked to the Windows repo
+
+
+2. Current structure
+
+/home/linux
+├─ edk2/
+│  ├─ MdeModulePkg/...
+│  ├─ Platform -> /home/linux/edk2-platforms/Platform
+│  ├─ Conf/
+│  └─ Build/A733/DEBUG_GCC/
+├─ edk2-platforms/
+│  └─ Platform/Allwinner/
+│     └─ A733Pkg -> /mnt/d/Projects/porta-a733-uefi/src/edk2/Platform/Allwinner/A733Pkg
+└─ edk2build.sh
+
+
+3. Meaning of each part
+
+3.1 /home/linux/edk2
+
+This is the upstream edk2 working tree used for:
+
+- BaseTools / Conf / build system
+- DXE core source
+- temporary diagnosis patches
+- build outputs
+
+Important diagnosis files currently edited here:
+
+- /home/linux/edk2/MdeModulePkg/Core/Dxe/Image/Image.c
+- /home/linux/edk2/MdeModulePkg/Core/Dxe/Mem/Page.c
+- /home/linux/edk2/MdeModulePkg/Core/Dxe/DxeMain.h
+
+
+3.2 /home/linux/edk2-platforms/Platform/Allwinner/A733Pkg
+
+This is not an independent Linux-side copy.
+
+It is a symlink to:
+
+- /mnt/d/Projects/porta-a733-uefi/src/edk2/Platform/Allwinner/A733Pkg
+
+So the platform code being built is the Windows repo content directly.
+
+
+3.3 /home/linux/edk2/Build/A733/DEBUG_GCC
+
+This is the output area.
+
+Key outputs include:
+
+- /home/linux/edk2/Build/A733/DEBUG_GCC/FV/A733.fd
+- /home/linux/edk2/Build/A733/DEBUG_GCC/AARCH64/Shell.efi
+- /home/linux/edk2/Build/A733/DEBUG_GCC/AARCH64/BootProbe.efi
+
+
+4. Practical interpretation
+
+The WSL side currently serves 3 roles:
+
+1. build environment
+2. diagnosis environment
+3. output staging area
+
+It is not the authoritative home of the A733 platform source itself.
+
+The authoritative home of A733 platform code is still:
+
+- D:\Projects\porta-a733-uefi
+
+
+5. Safe mental model
+
+Use this model:
+
+- firmware/platform source of truth:
+  D:\Projects\porta-a733-uefi
+
+- bring-up scripts / analysis source of truth:
+  D:\Projects\porta-a733-bringup
+
+- WSL:
+  upstream edk2 + diagnosis patches + build outputs
+
+
+6. Important caveat
+
+If a boot log depends on the extra DXE diagnostics, then the run depends on the WSL edk2 tree state too.
+
+That means:
+
+- repo state alone is not enough to reproduce everything
+- the WSL diagnosis patches must also be tracked in handoff notes
+
+
+7. Bottom line
+
+If someone asks "what is WSL for?" the right answer is:
+
+"Mostly the build/diagnosis environment. The real A733 platform package lives in the Windows repo, but the upstream edk2 core and temporary debug instrumentation live in WSL."

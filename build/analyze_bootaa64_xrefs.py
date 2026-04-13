@@ -119,6 +119,47 @@ def disasm_bytes(data: bytes, va: int) -> list:
     return list(md.disasm(data, va))
 
 
+def read_bytes_at_va(sections: list[SectionView], va: int, size: int) -> bytes | None:
+    for section in sections:
+        if section.va <= va and va + size <= section.end:
+            off = va - section.va
+            return section.data[off : off + size]
+    return None
+
+
+def describe_literal_load(sections: list[SectionView], insn) -> str | None:
+    ops = insn.operands
+    if insn.id not in (ARM64_INS_LDR, ARM64_INS_LDRSW) or len(ops) < 2:
+        return None
+    if ops[0].type != ARM64_OP_REG or ops[1].type != ARM64_OP_IMM:
+        return None
+
+    reg_name = insn.reg_name(ops[0].reg)
+    size_map = {
+        "w": 4,
+        "x": 8,
+        "s": 4,
+        "d": 8,
+        "q": 16,
+    }
+    size = size_map.get(reg_name[:1])
+    literal_va = ops[1].imm
+    if size is None:
+        return f"literal[{literal_va:016X}]"
+
+    data = read_bytes_at_va(sections, literal_va, size)
+    if data is None:
+        return f"literal[{literal_va:016X}] unmapped"
+
+    if size == 4:
+        value = struct.unpack("<I", data)[0]
+        return f"literal[{literal_va:016X}]=0x{value:08X}"
+    if size == 8:
+        value = struct.unpack("<Q", data)[0]
+        return f"literal[{literal_va:016X}]=0x{value:016X}"
+    return f"literal[{literal_va:016X}]={data.hex()}"
+
+
 def collect_xrefs(
     insns: list,
     function_start: int,
@@ -235,10 +276,46 @@ def make_xrefs(
     ]
 
 
-def dump_function(text: SectionView, function_start: int, function_end: int) -> list[str]:
+def dump_function(
+    sections: list[SectionView],
+    text: SectionView,
+    function_start: int,
+    function_end: int,
+    highlight_address: int | None = None,
+) -> list[str]:
     off = function_start - text.va
     chunk = text.data[off : off + (function_end - function_start)]
-    return [f"{insn.address:016X}: {insn.mnemonic} {insn.op_str}".rstrip() for insn in disasm_bytes(chunk, function_start)]
+    lines: list[str] = []
+    for insn in disasm_bytes(chunk, function_start):
+        prefix = ">> " if highlight_address == insn.address else "   "
+        line = f"{prefix}{insn.address:016X}: {insn.mnemonic} {insn.op_str}".rstrip()
+        literal = describe_literal_load(sections, insn)
+        if literal is not None:
+            line = f"{line}    ; {literal}"
+        lines.append(line)
+    return lines
+
+
+def dump_address_window(
+    sections: list[SectionView],
+    text: SectionView,
+    address: int,
+    before: int = 0x20,
+    after: int = 0x40,
+) -> list[str]:
+    start = max(text.va, address - before)
+    end = min(text.va + len(text.data), address + after)
+    off = start - text.va
+    chunk = text.data[off : off + (end - start)]
+    lines: list[str] = []
+    for insn in disasm_bytes(chunk, start):
+        prefix = ">> " if address == insn.address else "   "
+        line = f"{prefix}{insn.address:016X}: {insn.mnemonic} {insn.op_str}".rstrip()
+        literal = describe_literal_load(sections, insn)
+        if literal is not None:
+            line = f"{line}    ; {literal}"
+        lines.append(line)
+    return lines
 
 
 def find_function(function_ranges: list[tuple[int, int]], address: int) -> tuple[int, int] | None:
@@ -249,9 +326,9 @@ def find_function(function_ranges: list[tuple[int, int]], address: int) -> tuple
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Find simple ARM64 string xrefs in BOOTAA64.EFI")
+    ap = argparse.ArgumentParser(description="Find simple ARM64 string xrefs and inspect ARM64 functions in BOOTAA64.EFI")
     ap.add_argument("image", type=Path)
-    ap.add_argument("patterns", nargs="+", help="Substring patterns to match in UTF-16 strings")
+    ap.add_argument("patterns", nargs="*", help="Substring patterns to match in UTF-16 strings")
     ap.add_argument(
         "--address",
         action="append",
@@ -260,6 +337,9 @@ def main() -> None:
     )
     args = ap.parse_args()
 
+    if not args.patterns and not args.address:
+        ap.error("provide at least one string pattern or --address")
+
     pe = pefile.PE(str(args.image), fast_load=True)
     sections = list(iter_sections(pe))
     text = get_section(sections, ".text")
@@ -267,53 +347,53 @@ def main() -> None:
     function_ranges = list(iter_arm64_function_ranges(pe, text, pdata))
 
     string_refs: list[StringRef] = []
-    for section in sections:
-        string_refs.extend(extract_utf16_strings(section))
-
     matched: list[StringRef] = []
-    lowered = [p.lower() for p in args.patterns]
-    for ref in string_refs:
-        text_lower = ref.text.lower()
-        if any(p in text_lower for p in lowered):
-            matched.append(ref)
+    if args.patterns:
+        for section in sections:
+            string_refs.extend(extract_utf16_strings(section))
 
-    if not matched:
-        print("No matching strings.")
-        return
+        lowered = [p.lower() for p in args.patterns]
+        for ref in string_refs:
+            text_lower = ref.text.lower()
+            if any(p in text_lower for p in lowered):
+                matched.append(ref)
 
-    print("Matched strings:")
-    for ref in sorted(matched, key=lambda r: r.va):
-        print(f"  {ref.va:016X} [{ref.section}] {ref.text}")
+        if not matched:
+            print("No matching strings.")
+        else:
+            print("Matched strings:")
+            for ref in sorted(matched, key=lambda r: r.va):
+                print(f"  {ref.va:016X} [{ref.section}] {ref.text}")
 
-    targets_by_va: dict[int, list[StringRef]] = defaultdict(list)
-    for ref in matched:
-        targets_by_va[ref.va].append(ref)
+            targets_by_va: dict[int, list[StringRef]] = defaultdict(list)
+            for ref in matched:
+                targets_by_va[ref.va].append(ref)
 
-    xrefs: list[Xref] = []
-    for function_start, function_end in function_ranges:
-        off = function_start - text.va
-        chunk = text.data[off : off + (function_end - function_start)]
-        xrefs.extend(
-            collect_xrefs(
-                disasm_bytes(chunk, function_start),
-                function_start,
-                function_end,
-                targets_by_va,
-            )
-        )
+            xrefs: list[Xref] = []
+            for function_start, function_end in function_ranges:
+                off = function_start - text.va
+                chunk = text.data[off : off + (function_end - function_start)]
+                xrefs.extend(
+                    collect_xrefs(
+                        disasm_bytes(chunk, function_start),
+                        function_start,
+                        function_end,
+                        targets_by_va,
+                    )
+                )
 
-    if not xrefs:
-        print("\nNo simple ADR/ADRP/ADD xrefs found.")
-    else:
-        print("\nXrefs:")
-        for xref in sorted(xrefs, key=lambda x: (x.target.va, x.function_start, x.insn_va)):
-            print(
-                f"\n[{xref.target.text}] target={xref.target.va:016X} "
-                f"func={xref.function_start:016X}-{xref.function_end:016X} "
-                f"xref={xref.insn_va:016X} {xref.insn_text}"
-            )
-            for line in xref.context:
-                print(f"    {line}")
+            if not xrefs:
+                print("\nNo simple ADR/ADRP/ADD xrefs found.")
+            else:
+                print("\nXrefs:")
+                for xref in sorted(xrefs, key=lambda x: (x.target.va, x.function_start, x.insn_va)):
+                    print(
+                        f"\n[{xref.target.text}] target={xref.target.va:016X} "
+                        f"func={xref.function_start:016X}-{xref.function_end:016X} "
+                        f"xref={xref.insn_va:016X} {xref.insn_text}"
+                    )
+                    for line in xref.context:
+                        print(f"    {line}")
 
     for raw in args.address:
         address = int(raw, 16)
@@ -321,10 +401,12 @@ def main() -> None:
         print(f"\nAddress {address:016X}:")
         if func is None:
             print("  not inside a .pdata-described ARM64 function")
+            for line in dump_address_window(sections, text, address):
+                print(f"    {line}")
             continue
         function_start, function_end = func
         print(f"  containing function {function_start:016X}-{function_end:016X}")
-        for line in dump_function(text, function_start, function_end):
+        for line in dump_function(sections, text, function_start, function_end, highlight_address=address):
             print(f"    {line}")
 
 
